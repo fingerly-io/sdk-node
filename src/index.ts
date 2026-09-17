@@ -1,3 +1,10 @@
+/**
+ * Server-side Fingerly SDK: event reads, webhook verification and a
+ * same-origin proxy for the browser SDK.
+ *
+ * @packageDocumentation
+ */
+
 export { Fingerly, load } from "./client.js";
 export { EventsClient } from "./events.js";
 export { FingerlyProxy, createProxy } from "./proxy.js";
