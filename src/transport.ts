@@ -1,4 +1,4 @@
-import { apiPrefix } from "./routes.js";
+import { validateApiVersion } from "./routes.js";
 import {
   endpointForKey,
   endpoint as normalizeEndpoint,
@@ -21,9 +21,8 @@ export class APITransport {
 
   constructor(options: FingerlyOptions) {
     const regionalEndpoint = endpointForKey(options.secretKey, "sk");
-    this.endpoint =
-      normalizeEndpoint(options.endpoint ?? regionalEndpoint) +
-      apiPrefix(options.apiVersion);
+    const apiVersion = validateApiVersion(options.apiVersion);
+    this.endpoint = `${normalizeEndpoint(options.endpoint ?? regionalEndpoint)}/api/${apiVersion}`;
     this.timeoutMs = positive(options.timeoutMs ?? 5_000, "timeoutMs");
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
     this.secretKey = options.secretKey;

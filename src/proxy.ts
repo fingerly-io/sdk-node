@@ -1,4 +1,4 @@
-import { apiPrefix } from "./routes.js";
+import { validateApiVersion } from "./routes.js";
 import {
   credential as parseCredential,
   endpointForKey,
@@ -19,8 +19,8 @@ export class FingerlyProxy {
   private readonly upstream: string;
   /** Local mount path, such as /metrics; stripped before forwarding upstream. */
   private readonly prefix: string;
-  /** Versioned API path, such as /api/v1; used to match and forward routes. */
-  private readonly apiPrefix: string;
+  /** API version, such as v1; selects the routes accepted and sent upstream. */
+  private readonly apiVersion: string;
   /** Incoming body limit in bytes; larger requests receive HTTP 413. */
   private readonly maxBodyBytes: number;
   /** Total time limit for reading the body, resolving the IP, and forwarding. */
@@ -37,7 +37,7 @@ export class FingerlyProxy {
       throw new TypeError("A Fingerly proxy key is required");
     if (options.proxyKey && options.secretKey)
       throw new TypeError("Pass proxyKey or deprecated secretKey, not both");
-    this.apiPrefix = apiPrefix(options.apiVersion);
+    this.apiVersion = validateApiVersion(options.apiVersion);
     this.usesProxyKey = Boolean(options.proxyKey);
     this.key = options.proxyKey ?? options.secretKey!;
     const kind = this.usesProxyKey ? "px" : "sk";
@@ -101,7 +101,8 @@ export class FingerlyProxy {
   };
 
   private allowedPath(pathname: string): string | null {
-    const basePath = this.prefix + this.apiPrefix;
+    const versionPath = `/api/${this.apiVersion}`;
+    const basePath = this.prefix + versionPath;
     if (!pathname.startsWith(basePath + "/")) return null;
     const resource = pathname.slice(basePath.length);
     if (
@@ -109,7 +110,7 @@ export class FingerlyProxy {
       !/^\/events\/[^/]+\/supplement$/.test(resource)
     )
       return null;
-    return this.apiPrefix + resource;
+    return versionPath + resource;
   }
 
   private acceptsPublicKey(key: string | null): boolean {
