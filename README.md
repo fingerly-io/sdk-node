@@ -107,10 +107,11 @@ disabled until release authorization and registry setup are complete.
 
 `client.ts` composes the public `Fingerly` class. `events.ts` owns event reads
 and polling; `transport.ts` owns authenticated HTTP and API errors. `proxy.ts`
-handles proxy routing and headers, with bounded stream reads in `body.ts`.
-`webhooks.ts` verifies signatures; `credentials.ts` validates keys and endpoints.
-Shared public types, errors, and cancellation helpers live in `types.ts`,
-`errors.ts`, and `timing.ts`. `index.ts` only exposes the public API.
+handles proxy routing, headers, and bounded body reads. `webhooks.ts` verifies
+signatures. `config.ts` validates every caller-supplied option: keys, origins,
+API versions, and durations, all before any network access. Shared public types,
+errors, and cancellation helpers live in `types.ts`, `errors.ts`, and
+`deadline.ts`. `index.ts` only exposes the public API.
 
 The existing `load()`, `createProxy()`, and `verifyWebhook()` exports remain
 available. `load(options)` returns a `Fingerly` instance.
