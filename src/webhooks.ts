@@ -1,64 +1,80 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { VerifyWebhookOptions } from "./types.js";
 
-/** Verify the exact raw body, accepting any valid signature during rotation. */
+const DEFAULT_TOLERANCE_SECONDS = 300;
+
+/** A lowercase hex digest, exactly as Fingerly sends it. */
+const SIGNATURE = /^sha256=[a-f0-9]{64}$/;
+
+/** Whole unsigned seconds; anything else is not a timestamp we signed. */
+const TIMESTAMP = /^\d+$/;
+
+const PREFIX_LENGTH = "sha256=".length;
+
+/**
+ * Verifies a webhook delivery against the raw request body.
+ *
+ * Pass the exact bytes received, before any JSON parsing: re-serialising them
+ * changes the digest. During a signing-secret rotation Fingerly sends several
+ * comma-separated signatures, and any one matching is accepted.
+ *
+ * Verification proves the delivery came from Fingerly and is recent. It does
+ * not deduplicate, so persist processed event ids as well.
+ *
+ * @param options Secret, raw payload, and the signature and timestamp headers.
+ * @returns True when a signature matches and the timestamp is within tolerance.
+ */
 export function verifyWebhook(options: VerifyWebhookOptions): boolean {
-  const { secret, timestamp, signature, payload } = options;
+  const { secret, payload, signature, timestamp } = options;
   if (!secret || !timestamp || !signature) return false;
-  if (!isRecentTimestamp(timestamp, options.now, options.toleranceSeconds))
-    return false;
 
-  const expected = signPayload(secret, timestamp, payload);
-  return signature
-    .split(",")
-    .some((candidate) => matchesSignature(candidate, expected));
+  // Check freshness before spending a HMAC on an obvious replay.
+  const tolerance = options.toleranceSeconds ?? DEFAULT_TOLERANCE_SECONDS;
+  if (!isFresh(timestamp, options.now ?? new Date(), tolerance)) return false;
+
+  const expected = sign(secret, timestamp, payload);
+  return signature.split(",").some((candidate) => matches(candidate, expected));
 }
 
-function isRecentTimestamp(
+/** Rejects replays: the signed time must be within tolerance of now. */
+function isFresh(
   timestamp: string,
-  now: Date = new Date(),
-  toleranceSeconds: number = 300,
+  now: Date,
+  toleranceSeconds: number,
 ): boolean {
-  const seconds = parseTimestamp(timestamp);
-  if (seconds === null) return false;
-  if (!isValidTolerance(toleranceSeconds)) return false;
+  if (!TIMESTAMP.test(timestamp)) return false;
+  if (!Number.isFinite(toleranceSeconds) || toleranceSeconds < 0) return false;
 
-  const currentSeconds = Math.floor(now.getTime() / 1000);
-  if (!Number.isFinite(currentSeconds)) return false;
-  return Math.abs(currentSeconds - seconds) <= toleranceSeconds;
+  const signedAt = Number(timestamp);
+  const nowSeconds = Math.floor(now.getTime() / 1000);
+  if (!Number.isSafeInteger(signedAt) || !Number.isFinite(nowSeconds))
+    return false;
+  return Math.abs(nowSeconds - signedAt) <= toleranceSeconds;
 }
 
-function parseTimestamp(value: string): number | null {
-  if (!/^\d+$/.test(value)) return null;
-  const seconds = Number(value);
-  return Number.isSafeInteger(seconds) ? seconds : null;
-}
-
-function isValidTolerance(seconds: number): boolean {
-  return Number.isFinite(seconds) && seconds >= 0;
-}
-
-/** Fingerly signs timestamp + "." + the original request bytes. */
-function signPayload(
+/**
+ * Computes the expected digest.
+ *
+ * Fingerly signs the timestamp, a literal dot, then the raw body bytes.
+ *
+ * @returns The hex digest as ASCII bytes, ready for a constant-time compare.
+ */
+function sign(
   secret: string,
   timestamp: string,
   payload: string | Uint8Array,
 ): Buffer {
   const digest = createHmac("sha256", secret)
     .update(`${timestamp}.`)
-    .update(Buffer.from(payload))
+    .update(payload)
     .digest("hex");
   return Buffer.from(digest);
 }
 
-function matchesSignature(candidate: string, expected: Buffer): boolean {
-  const actual = parseSignature(candidate);
-  if (actual === null || actual.length !== expected.length) return false;
-  return timingSafeEqual(expected, actual);
-}
-
-function parseSignature(candidate: string): Buffer | null {
+/** Compares one candidate signature in constant time. */
+function matches(candidate: string, expected: Buffer): boolean {
   const value = candidate.trim();
-  if (!/^sha256=[a-f0-9]{64}$/.test(value)) return null;
-  return Buffer.from(value.slice("sha256=".length));
+  if (!SIGNATURE.test(value)) return false;
+  const actual = Buffer.from(value.slice(PREFIX_LENGTH));
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
