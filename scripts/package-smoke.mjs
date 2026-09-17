@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 const work = mkdtempSync(resolve(tmpdir(), "fingerly-node-package-"));
 try {
-  execFileSync('pnpm', ['build'], { stdio: 'inherit' });
+  execFileSync("pnpm", ["build"], { stdio: "inherit" });
   execFileSync("pnpm", ["pack", "--pack-destination", work], {
     stdio: "inherit",
   });
@@ -32,7 +32,7 @@ try {
     ],
     { cwd: work, stdio: "inherit" },
   );
-  const assertions = `if (typeof sdk.load !== 'function' || typeof sdk.createProxy !== 'function' || typeof sdk.verifyWebhook !== 'function' || typeof sdk.FingerlyTimeoutError !== 'function') throw new Error('Missing exports'); const c = sdk.load({secretKey:'fly_sk_us_development_smoke'}); if(typeof c.events.waitFor !== 'function') throw new Error('Missing waitFor');`;
+  const assertions = `if (typeof sdk.Fingerly !== 'function' || typeof sdk.Fingerly.verifyWebhook !== 'function' || typeof sdk.Fingerly.createProxy !== 'function') throw new Error('Missing class API'); if (typeof sdk.load !== 'function' || typeof sdk.createProxy !== 'function' || typeof sdk.verifyWebhook !== 'function' || typeof sdk.FingerlyTimeoutError !== 'function') throw new Error('Missing exports'); const c = new sdk.Fingerly({secretKey:'fly_sk_us_development_smoke'}); if(typeof c.events.waitFor !== 'function') throw new Error('Missing waitFor');`;
   execFileSync(
     process.execPath,
     [

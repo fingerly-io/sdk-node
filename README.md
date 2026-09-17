@@ -5,9 +5,9 @@ Server-side event reads, webhook verification, and a same-origin proxy. Node.js
 the repository is private and the npm package has not been published.
 
 ```ts
-import { load, FingerlyAPIError, FingerlyTimeoutError } from '@fingerly/node'
+import { Fingerly, FingerlyAPIError, FingerlyTimeoutError } from '@fingerly/node'
 
-const fingerly = load({ secretKey: process.env.FINGERLY_SECRET_KEY!, timeoutMs: 5000 })
+const fingerly = new Fingerly({ secretKey: process.env.FINGERLY_SECRET_KEY!, timeoutMs: 5000 })
 const page = await fingerly.events.list({ limit: 50, level: 'high' })
 const event = await fingerly.events.get(page.rows[0]!.request_id)
 ```
@@ -49,8 +49,8 @@ they do not replace your application's authentication or replay protection.
 ## Webhooks
 
 ```ts
-import { verifyWebhook } from '@fingerly/node'
-const valid = verifyWebhook({
+import { Fingerly } from '@fingerly/node'
+const valid = Fingerly.verifyWebhook({
   secret: process.env.FINGERLY_WEBHOOK_SECRET!,
   payload: rawBody,
   timestamp: request.headers.get('x-fingerly-timestamp'),
@@ -66,8 +66,8 @@ signature in the comma-separated header is accepted.
 ## Same-origin proxy
 
 ```ts
-import { createProxy } from '@fingerly/node'
-export const POST = createProxy({
+import { Fingerly } from '@fingerly/node'
+export const POST = Fingerly.createProxy({
   proxyKey: process.env.FINGERLY_PROXY_KEY!,
   prefix: '/api/fingerly',
   clientIp: request => request.headers.get('cf-connecting-ip')!,
@@ -102,3 +102,15 @@ TypeScript output. Never put production secrets in fixtures.
 `pnpm pack` builds a release artifact. CI checks package installation and both
 ESM/CommonJS imports on Node 18, 22, and 24. Public npm publishing is intentionally
 disabled until release authorization and registry setup are complete.
+
+## Source structure
+
+`client.ts` composes the public `Fingerly` class. `events.ts` owns event reads
+and polling; `transport.ts` owns authenticated HTTP and API errors. `proxy.ts`
+handles proxy routing and headers, with bounded stream reads in `body.ts`.
+`webhooks.ts` verifies signatures; `credentials.ts` validates keys and endpoints.
+Shared public types, errors, and cancellation helpers live in `types.ts`,
+`errors.ts`, and `timing.ts`. `index.ts` only exposes the public API.
+
+The existing `load()`, `createProxy()`, and `verifyWebhook()` exports remain
+available. `load(options)` returns a `Fingerly` instance.
