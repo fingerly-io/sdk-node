@@ -71,3 +71,56 @@ describe("Fingerly class API", () => {
     expect(fetchImpl.mock.calls[0]?.[1]?.headers).toBeInstanceOf(Headers);
   });
 });
+
+describe("API version configuration", () => {
+  it("uses the constructor version for every event request", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => new Response("{}"));
+    const client = new Fingerly({ secretKey, apiVersion: "v2", fetchImpl });
+    await client.events.get("request-1");
+    await client.events.list({ limit: 10 });
+    expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([
+      "https://us.api.fingerly.io/api/v2/events/request-1",
+      "https://us.api.fingerly.io/api/v2/events?limit=10",
+    ]);
+  });
+
+  it.each(["", "1", "v0", "v1/../v2", "v2?key=value", "v2#fragment", "v2\n"])(
+    "rejects an invalid version %j before networking",
+    (apiVersion) => {
+      const fetchImpl = vi.fn<typeof fetch>();
+      expect(() => new Fingerly({ secretKey, apiVersion, fetchImpl })).toThrow(
+        TypeError,
+      );
+      expect(fetchImpl).not.toHaveBeenCalled();
+    },
+  );
+
+  it("accepts only the configured version in proxy routes", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => new Response("{}"));
+    const proxy = Fingerly.createProxy({
+      proxyKey: "fly_px_us_development_test",
+      apiVersion: "v2",
+      clientIp: () => "203.0.113.1",
+      fetchImpl,
+    });
+    const request = (path: string) =>
+      new Request(`https://shop.test/api/fingerly${path}`, {
+        method: "POST",
+        headers: { "x-api-key": "fly_pk_us_development_test" },
+        body: "{}",
+      });
+    expect((await proxy(request("/api/v1/identify"))).status).toBe(404);
+    expect((await proxy(request("/api/v2/identify"))).status).toBe(200);
+    expect(
+      (await proxy(request("/api/v2/events/request-1/supplement"))).status,
+    ).toBe(200);
+    expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([
+      "https://us.api.fingerly.io/api/v2/identify",
+      "https://us.api.fingerly.io/api/v2/events/request-1/supplement",
+    ]);
+  });
+});

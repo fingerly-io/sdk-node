@@ -10,6 +10,7 @@ import type {
 
 /** Server SDK. Keep secret keys and webhook secrets in server-side code. */
 export class Fingerly {
+  /** Event reads and bounded polling under this client's secret key. */
   readonly events: EventsClient;
 
   constructor(options: FingerlyOptions) {

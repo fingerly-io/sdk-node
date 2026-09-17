@@ -14,7 +14,7 @@ export class EventsClient {
 
   get(requestId: string, signal?: AbortSignal): Promise<Event> {
     return this.transport.get<Event>(
-      `/api/v1/events/${encodeURIComponent(requestId)}`,
+      `/events/${encodeURIComponent(requestId)}`,
       signal,
     );
   }
@@ -28,10 +28,7 @@ export class EventsClient {
     if (query.visitor !== undefined) params.set("visitor", query.visitor);
     if (query.level !== undefined) params.set("level", query.level);
     const suffix = params.size === 0 ? "" : `?${params}`;
-    return this.transport.get<EventPage>(
-      `/api/v1/events${suffix}`,
-      query.signal,
-    );
+    return this.transport.get<EventPage>(`/events${suffix}`, query.signal);
   }
 
   /** Poll only event_not_found while the ingestion pipeline persists an event. */

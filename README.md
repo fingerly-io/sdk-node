@@ -7,7 +7,7 @@ the repository is private and the npm package has not been published.
 ```ts
 import { Fingerly, FingerlyAPIError, FingerlyTimeoutError } from '@fingerly/node'
 
-const fingerly = new Fingerly({ secretKey: process.env.FINGERLY_SECRET_KEY!, timeoutMs: 5000 })
+const fingerly = new Fingerly({ secretKey: process.env.FINGERLY_SECRET_KEY!, timeoutMs: 5000, apiVersion: 'v1' })
 const page = await fingerly.events.list({ limit: 50, level: 'high' })
 const event = await fingerly.events.get(page.rows[0]!.request_id)
 ```
@@ -114,3 +114,9 @@ Shared public types, errors, and cancellation helpers live in `types.ts`,
 
 The existing `load()`, `createProxy()`, and `verifyWebhook()` exports remain
 available. `load(options)` returns a `Fingerly` instance.
+
+### API version
+
+Set `apiVersion` in the client options to select a route version, for example
+`v1` (the default) or `v2`. The server must support the chosen version. The
+version applies to every API request; it is separate from the endpoint origin.

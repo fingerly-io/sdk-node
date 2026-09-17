@@ -1,3 +1,4 @@
+import { apiPrefix } from "./routes.js";
 import {
   endpointForKey,
   endpoint as normalizeEndpoint,
@@ -9,14 +10,20 @@ import type { FingerlyOptions } from "./types.js";
 
 /** Authenticated JSON requests with a deadline covering fetch and body reads. */
 export class APITransport {
+  /** Regional base URL including the configured API version, e.g. /api/v1. */
   private readonly endpoint: string;
+  /** Time limit covering both the HTTP request and reading its JSON body. */
   private readonly timeoutMs: number;
+  /** HTTP implementation; replace it in tests or hosts with a custom fetch. */
   private readonly fetchImpl: typeof fetch;
+  /** Server-only read key sent in x-api-key and redacted from API errors. */
   private readonly secretKey: string;
 
   constructor(options: FingerlyOptions) {
     const regionalEndpoint = endpointForKey(options.secretKey, "sk");
-    this.endpoint = normalizeEndpoint(options.endpoint ?? regionalEndpoint);
+    this.endpoint =
+      normalizeEndpoint(options.endpoint ?? regionalEndpoint) +
+      apiPrefix(options.apiVersion);
     this.timeoutMs = positive(options.timeoutMs ?? 5_000, "timeoutMs");
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
     this.secretKey = options.secretKey;

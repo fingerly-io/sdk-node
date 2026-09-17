@@ -24,6 +24,8 @@ export type EventPage = Omit<components["schemas"]["SDKEventsOut"], "rows"> & {
   rows: Event[];
 };
 export interface FingerlyOptions {
+  /** API route version. Defaults to v1; the server must support it. */
+  apiVersion?: string;
   secretKey: string;
   endpoint?: string;
   fetchImpl?: typeof fetch;
@@ -45,6 +47,8 @@ export interface VerifyWebhookOptions {
 }
 
 export interface ProxyOptions {
+  /** API route version accepted locally and forwarded upstream. Defaults to v1. */
+  apiVersion?: string;
   /** Write-only credential created for customer-owned proxy infrastructure. */
   proxyKey?: string;
   /** @deprecated Use proxyKey. Secret read keys will be refused in the next major version. */
