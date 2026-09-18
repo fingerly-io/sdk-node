@@ -52,24 +52,3 @@ function rejectOnAbort(signal: AbortSignal): Promise<never> {
     );
   });
 }
-
-/**
- * Waits between polls, rejecting as soon as the signal aborts.
- *
- * @param ms How long to wait.
- * @param signal Cancellation; its reason becomes the rejection.
- */
-export function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  if (signal.aborted) return Promise.reject(signal.reason);
-  return new Promise((resolve, reject) => {
-    const abort = () => {
-      clearTimeout(timer);
-      reject(signal.reason);
-    };
-    const timer = setTimeout(() => {
-      signal.removeEventListener("abort", abort);
-      resolve();
-    }, ms);
-    signal.addEventListener("abort", abort, { once: true });
-  });
-}

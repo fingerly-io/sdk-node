@@ -114,7 +114,7 @@ disabled until release authorization and registry setup are complete.
 ## Source structure
 
 `client.ts` composes the public `Fingerly` class. `events.ts` owns event reads
-and polling; `transport.ts` owns authenticated HTTP and API errors. `proxy.ts`
+and the list filters; `transport.ts` owns authenticated HTTP and API errors. `proxy.ts`
 handles proxy routing, headers, and bounded body reads. `webhooks.ts` verifies
 signatures. `config.ts` validates every caller-supplied option: keys, origins,
 API versions, and durations, all before any network access. Shared public types,

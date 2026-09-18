@@ -21,7 +21,7 @@ import type {
  * ```
  */
 export class Fingerly {
-  /** Event reads and bounded polling under this client's secret key. */
+  /** Event reads under this client's secret key. */
   readonly events: EventsClient;
 
   /**
