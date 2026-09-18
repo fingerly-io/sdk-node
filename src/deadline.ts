@@ -1,8 +1,5 @@
 import { FingerlyTimeoutError } from "./errors.js";
 
-/** What a deadline protects; surfaced on {@link FingerlyTimeoutError}. */
-export type Operation = "request" | "event_wait";
-
 /**
  * Runs a task under a deadline, forwarding the caller's cancellation.
  *
@@ -11,14 +8,12 @@ export type Operation = "request" | "event_wait";
  * implementation that ignores cancellation still cannot outlive the deadline.
  *
  * @param timeoutMs Time limit; already validated by the caller.
- * @param operation Which deadline this is, for the timeout error.
  * @param caller Optional caller signal; its abort reason is preserved verbatim.
  * @param task Receives the bounded signal and does the cancellable work.
  * @throws {FingerlyTimeoutError} When the deadline elapses first.
  */
 export async function withDeadline<T>(
   timeoutMs: number,
-  operation: Operation,
   caller: AbortSignal | undefined,
   task: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
@@ -27,7 +22,7 @@ export async function withDeadline<T>(
 
   const controller = new AbortController();
   const expire = setTimeout(() => {
-    controller.abort(new FingerlyTimeoutError(operation));
+    controller.abort(new FingerlyTimeoutError());
   }, timeoutMs);
   const forward = () => {
     controller.abort(caller?.reason);

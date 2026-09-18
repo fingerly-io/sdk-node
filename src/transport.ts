@@ -64,7 +64,7 @@ export class APITransport {
    * @throws {FingerlyTimeoutError} When the deadline elapses.
    */
   get<T>(path: string, signal?: AbortSignal): Promise<T> {
-    return withDeadline(this.timeoutMs, "request", signal, async (bounded) => {
+    return withDeadline(this.timeoutMs, signal, async (bounded) => {
       const response = await this.fetchImpl(this.baseUrl + path, {
         headers: { "x-api-key": this.secretKey, accept: "application/json" },
         redirect: "manual",

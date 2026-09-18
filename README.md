@@ -5,11 +5,19 @@ Server-side event reads, webhook verification, and a same-origin proxy. Node.js
 the repository is private and the npm package has not been published.
 
 ```ts
-import { Fingerly, FingerlyAPIError, FingerlyTimeoutError } from '@fingerly/node'
+import {
+  Fingerly,
+  FingerlyAPIError,
+  FingerlyTimeoutError,
+} from "@fingerly/node";
 
-const fingerly = new Fingerly({ secretKey: process.env.FINGERLY_SECRET_KEY!, timeoutMs: 5000, apiVersion: 'v1' })
-const page = await fingerly.events.list({ limit: 50, level: 'high' })
-const event = await fingerly.events.get(page.rows[0]!.request_id)
+const fingerly = new Fingerly({
+  secretKey: process.env.FINGERLY_SECRET_KEY!,
+  timeoutMs: 5000,
+  apiVersion: "v1",
+});
+const page = await fingerly.events.list({ limit: 50, level: "high" });
+const event = await fingerly.events.get(page.rows[0]!.request_id);
 ```
 
 Event reads require `fly_sk_{eu|us}_{production|staging|development}_…` keys.
@@ -19,24 +27,24 @@ network access. Requests do not follow redirects. Existing `get` and `list`
 operations perform one request. A request deadline includes receiving its JSON
 body; both accept an `AbortSignal` (`list` through its options).
 
-Identification returns before archival and warehouse insertion. To wait for a
-newly identified event, explicitly opt in to bounded polling:
+An event is readable as soon as identification answers, so reading one right
+after identifying a visitor needs nothing special:
 
 ```ts
-const event = await fingerly.events.waitFor(requestId, {
-  timeoutMs: 10000,
-  intervalMs: 250,
-  signal: controller.signal,
-})
+const event = await fingerly.events.get(requestId);
 ```
 
-Only a structured `404 event_not_found` is retried. Other HTTP and transport
-errors fail immediately. A missing event at the deadline throws
-`FingerlyTimeoutError` with `operation: 'event_wait'`. Request deadlines use
-`operation: 'request'`. External cancellation preserves the caller's reason.
-`FingerlyAPIError` provides `status`, optional `code`, `details`, and `requestId`.
-The archived `document` and `deferred_signals` are included when available;
-`suspect_score: null` means unscored, and must not be treated as zero.
+Earlier versions of this SDK had a `waitFor` that polled through the gap
+between identification and the event becoming queryable. There is no gap: the
+API keeps the finished row readable while it makes its way to the warehouse, so
+`404 event_not_found` now means a request id that was never issued.
+
+`get` and `list` each perform one request and never retry. Cancellation
+preserves the caller's reason. `FingerlyAPIError` provides `status`, optional
+`code`, `details`, and `requestId`. The archived `document` is included once it
+has been archived, which is moments later than the event itself - check
+`has_document` rather than assuming. `suspect_score: null` means unscored, and
+must not be treated as zero.
 
 ## Verify a backend action
 
@@ -49,13 +57,13 @@ they do not replace your application's authentication or replay protection.
 ## Webhooks
 
 ```ts
-import { Fingerly } from '@fingerly/node'
+import { Fingerly } from "@fingerly/node";
 const valid = Fingerly.verifyWebhook({
   secret: process.env.FINGERLY_WEBHOOK_SECRET!,
   payload: rawBody,
-  timestamp: request.headers.get('x-fingerly-timestamp'),
-  signature: request.headers.get('x-fingerly-signature'),
-})
+  timestamp: request.headers.get("x-fingerly-timestamp"),
+  signature: request.headers.get("x-fingerly-signature"),
+});
 ```
 
 Verify the exact raw bytes before JSON parsing. Signatures cover the timestamp
@@ -66,12 +74,12 @@ signature in the comma-separated header is accepted.
 ## Same-origin proxy
 
 ```ts
-import { Fingerly } from '@fingerly/node'
+import { Fingerly } from "@fingerly/node";
 export const POST = Fingerly.createProxy({
   proxyKey: process.env.FINGERLY_PROXY_KEY!,
-  prefix: '/api/fingerly',
-  clientIp: request => request.headers.get('cf-connecting-ip')!,
-})
+  prefix: "/api/fingerly",
+  clientIp: (request) => request.headers.get("cf-connecting-ip")!,
+});
 ```
 
 Use that IP header only when your origin exclusively accepts trusted Cloudflare

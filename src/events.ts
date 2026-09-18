@@ -1,16 +1,6 @@
 import { positiveInt } from "./config.js";
-import { sleep, withDeadline } from "./deadline.js";
-import { FingerlyAPIError } from "./errors.js";
 import type { APITransport } from "./transport.js";
-import type {
-  Event,
-  EventListOptions,
-  EventPage,
-  WaitForOptions,
-} from "./types.js";
-
-const DEFAULT_WAIT_TIMEOUT_MS = 10_000;
-const DEFAULT_POLL_INTERVAL_MS = 250;
+import type { Event, EventListOptions, EventPage } from "./types.js";
 
 /**
  * Reads events stored for the organisation and environment of the secret key.
@@ -26,7 +16,8 @@ export class EventsClient {
    * @param requestId The `request_id` returned by identification.
    * @param signal Caller cancellation.
    * @throws {FingerlyAPIError} `404 event_not_found` if it is not stored yet;
-   *   use {@link EventsClient.waitFor} to wait for a fresh identification.
+   *   an event is readable as soon as identification answers, so this is a
+   *   request id that was never issued rather than one that has not landed.
    */
   get(requestId: string, signal?: AbortSignal): Promise<Event> {
     return this.transport.get<Event>(
@@ -59,45 +50,6 @@ export class EventsClient {
       query.signal,
     );
   }
-
-  /**
-   * Polls until a newly identified event becomes readable.
-   *
-   * Identification answers before the event is archived, so opt in to this
-   * only when you have just identified a visitor. Only a structured
-   * `404 event_not_found` is retried; every other failure propagates at once.
-   *
-   * @param requestId The `request_id` returned by identification.
-   * @param options Total deadline, poll interval and caller cancellation.
-   * @throws {FingerlyTimeoutError} With `operation: 'event_wait'` if the event
-   *   is still missing at the deadline.
-   * @throws {TypeError} If a timeout or interval is not a positive integer.
-   */
-  waitFor(requestId: string, options: WaitForOptions = {}): Promise<Event> {
-    const timeoutMs = positiveInt(
-      options.timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS,
-      "timeoutMs",
-    );
-    const intervalMs = positiveInt(
-      options.intervalMs ?? DEFAULT_POLL_INTERVAL_MS,
-      "intervalMs",
-    );
-    return withDeadline(
-      timeoutMs,
-      "event_wait",
-      options.signal,
-      async (signal) => {
-        for (;;) {
-          try {
-            return await this.get(requestId, signal);
-          } catch (error) {
-            if (!isPending(error)) throw error;
-          }
-          await sleep(intervalMs, signal);
-        }
-      },
-    );
-  }
 }
 
 /**
@@ -111,13 +63,4 @@ function rfc3339(value: Date | string, name: string): string {
   if (Number.isNaN(value.getTime()))
     throw new TypeError(`${name} must be a valid Date`);
   return value.toISOString();
-}
-
-/** True for the one retryable failure: the event has not landed yet. */
-function isPending(error: unknown): boolean {
-  return (
-    error instanceof FingerlyAPIError &&
-    error.status === 404 &&
-    error.code === "event_not_found"
-  );
 }

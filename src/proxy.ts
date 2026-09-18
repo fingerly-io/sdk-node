@@ -128,23 +128,18 @@ export class FingerlyProxy {
     if (Number(request.headers.get("content-length")) > this.maxBodyBytes)
       return refuse(413, "Payload Too Large");
 
-    return withDeadline(
-      this.timeoutMs,
-      "request",
-      request.signal,
-      async (signal) => {
-        const body = await readBody(request, this.maxBodyBytes, signal);
-        if (body === null) return refuse(413, "Payload Too Large");
-        const response = await this.fetchImpl(this.upstream + upstreamPath, {
-          method: "POST",
-          headers: await this.upstreamHeaders(request, url, apiKey),
-          body,
-          redirect: "manual",
-          signal,
-        });
-        return relay(response);
-      },
-    );
+    return withDeadline(this.timeoutMs, request.signal, async (signal) => {
+      const body = await readBody(request, this.maxBodyBytes, signal);
+      if (body === null) return refuse(413, "Payload Too Large");
+      const response = await this.fetchImpl(this.upstream + upstreamPath, {
+        method: "POST",
+        headers: await this.upstreamHeaders(request, url, apiKey),
+        body,
+        redirect: "manual",
+        signal,
+      });
+      return relay(response);
+    });
   };
 
   /**

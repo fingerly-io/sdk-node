@@ -111,57 +111,51 @@ describe("bounded event reads", () => {
   });
 });
 
-describe("explicit eventual-consistency polling", () => {
-  it("waits through structured missing responses until the event exists", async () => {
-    let count = 0;
-    const client = load({
-      secretKey: key,
-      fetchImpl: async () => (++count < 3 ? missing() : Response.json(event)),
-    });
-    expect(await client.events.waitFor("id", { intervalMs: 1 })).toEqual(event);
-    expect(count).toBe(3);
-  });
-  it("bounds permanently missing events with one total deadline", async () => {
-    const client = load({ secretKey: key, fetchImpl: async () => missing() });
-    await expect(
-      client.events.waitFor("id", { timeoutMs: 20, intervalMs: 5 }),
-    ).rejects.toMatchObject({
-      name: "FingerlyTimeoutError",
-      operation: "event_wait",
-    });
-  });
-  it("does not retry other errors, unstructured 404s or transport failures", async () => {
-    for (const status of [400, 401, 403, 429, 500, 404]) {
+describe("reading one event", () => {
+  it("makes exactly one request and never retries, whatever comes back", async () => {
+    for (const status of [400, 401, 403, 404, 429, 500]) {
       const fetchImpl = vi.fn(async () =>
         Response.json({ error: { code: "other" } }, { status }),
       );
       await expect(
-        load({ secretKey: key, fetchImpl }).events.waitFor("id"),
+        load({ secretKey: key, fetchImpl }).events.get("id"),
       ).rejects.toMatchObject({ status });
       expect(fetchImpl).toHaveBeenCalledTimes(1);
     }
+  });
+  it("surfaces a missing event rather than waiting for one", async () => {
+    // An event is readable as soon as identification answers, so this is a
+    // request id that was never issued - there is nothing to wait for.
+    const fetchImpl = vi.fn(async () => missing());
+    await expect(
+      load({ secretKey: key, fetchImpl }).events.get("id"),
+    ).rejects.toMatchObject({ status: 404, code: "event_not_found" });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+  it("propagates a transport failure unchanged", async () => {
     const error = new Error("offline");
     const fetchImpl = vi.fn(async () => {
       throw error;
     });
     await expect(
-      load({ secretKey: key, fetchImpl }).events.waitFor("id"),
+      load({ secretKey: key, fetchImpl }).events.get("id"),
     ).rejects.toBe(error);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
-  it("cancels polling immediately and cleans up cancellation listeners", async () => {
+  it("cancels immediately and cleans up its cancellation listeners", async () => {
     const controller = new AbortController();
     const add = vi.spyOn(controller.signal, "addEventListener");
     const remove = vi.spyOn(controller.signal, "removeEventListener");
-    const fetchImpl = vi.fn(async () => missing());
-    const read = load({ secretKey: key, fetchImpl }).events.waitFor("id", {
-      intervalMs: 1000,
-      signal: controller.signal,
-    });
+    const fetchImpl = vi.fn(
+      () => new Promise<Response>(() => {}),
+    ) as unknown as typeof fetch;
+    const read = load({ secretKey: key, fetchImpl }).events.get(
+      "id",
+      controller.signal,
+    );
     await new Promise((resolve) => setTimeout(resolve, 5));
     controller.abort(new Error("stop"));
     await expect(read).rejects.toThrow("stop");
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(add.mock.calls.length).toBe(remove.mock.calls.length);
   });
 });

@@ -7,16 +7,8 @@
 export class FingerlyTimeoutError extends Error {
   override readonly name = "FingerlyTimeoutError";
 
-  /**
-   * @param operation `event_wait` for `events.waitFor` polling, `request` for
-   *   a single HTTP request.
-   */
-  constructor(readonly operation: "request" | "event_wait" = "request") {
-    super(
-      operation === "event_wait"
-        ? "Timed out waiting for the event"
-        : "Fingerly request timed out",
-    );
+  constructor() {
+    super("Fingerly request timed out");
   }
 }
 

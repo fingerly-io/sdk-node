@@ -57,16 +57,6 @@ export interface FingerlyOptions {
   timeoutMs?: number;
 }
 
-/** Options for `events.waitFor`. */
-export interface WaitForOptions {
-  /** Total time to wait for the event. Defaults to 10000. */
-  timeoutMs?: number;
-  /** Delay between polls. Defaults to 250. */
-  intervalMs?: number;
-  /** Caller cancellation. */
-  signal?: AbortSignal;
-}
-
 /** Inputs for `verifyWebhook`. */
 export interface VerifyWebhookOptions {
   /** The endpoint's signing secret. */
