@@ -32,7 +32,7 @@ try {
     ],
     { cwd: work, stdio: "inherit" },
   );
-  const assertions = `if (typeof sdk.Fingerly !== 'function' || typeof sdk.Fingerly.verifyWebhook !== 'function' || typeof sdk.Fingerly.createProxy !== 'function') throw new Error('Missing class API'); if (typeof sdk.load !== 'function' || typeof sdk.createProxy !== 'function' || typeof sdk.verifyWebhook !== 'function' || typeof sdk.FingerlyTimeoutError !== 'function') throw new Error('Missing exports'); const c = new sdk.Fingerly({secretKey:'fly_sk_us_development_smoke'}); if(typeof c.events.get !== 'function' || typeof c.events.list !== 'function') throw new Error('Missing event reads');`;
+  const assertions = `if (typeof sdk.Fingerly !== 'function' || typeof sdk.Fingerly.verifyWebhook !== 'function' || typeof sdk.Fingerly.createProxy !== 'function') throw new Error('Missing class API'); if (typeof sdk.load !== 'function' || typeof sdk.createProxy !== 'function' || typeof sdk.verifyWebhook !== 'function' || typeof sdk.FingerlyTimeoutError !== 'function') throw new Error('Missing exports'); const c = new sdk.Fingerly({secretKey:'fly_sk_development_smoke'}); if(typeof c.events.get !== 'function' || typeof c.events.list !== 'function') throw new Error('Missing event reads');`;
   execFileSync(
     process.execPath,
     [
