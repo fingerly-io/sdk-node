@@ -110,7 +110,7 @@ export interface paths {
         };
         /**
          * Describe the management key
-         * @description The organization, role and region of the key the request was made with. Every other management route names the organization in its path; read it here.
+         * @description The organization and role of the key the request was made with. Every other management route names the organization in its path; read it here.
          */
         get: operations["describeManagementKey"];
         put?: never;
@@ -573,7 +573,6 @@ export interface components {
             name: string;
             /** @description The organization every management route acts on */
             organization_id: string;
-            region: string;
             /** @description admin or developer */
             role: string;
         };
@@ -589,7 +588,6 @@ export interface components {
             last_used_at?: string | null;
             name: string;
             prefix: string;
-            region: string;
             /** Format: date-time */
             revoked_at?: string | null;
             status: string;
@@ -697,10 +695,9 @@ export interface components {
              */
             last_used_at?: string | null;
             name: string;
-            /** @description The human-readable stem, such as fly_pk_eu_production */
+            /** @description The human-readable stem, such as fly_pk_production */
             prefix: string;
-            /** @description Immutable data residency inherited from the organization */
-            region: string;
+            project_id: string;
             /** Format: date-time */
             revoked_at?: string | null;
             revoked_by?: string;
@@ -1654,7 +1651,10 @@ export interface operations {
     };
     listSdkKeys: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The project whose keys these are */
+                project_id?: string;
+            };
             header?: never;
             path: {
                 /** @description The organization whose keys these are */
@@ -1722,7 +1722,10 @@ export interface operations {
     };
     issueSdkKey: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The project to issue into */
+                project_id?: string;
+            };
             header?: never;
             path: {
                 /** @description The organization to issue into */
@@ -1804,7 +1807,10 @@ export interface operations {
     };
     replacePublicKeyAllowedOrigins: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The project the key belongs to */
+                project_id?: string;
+            };
             header?: never;
             path: {
                 /** @description The organization the key belongs to */
@@ -1890,7 +1896,10 @@ export interface operations {
     };
     revokeSdkKey: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The project the key belongs to */
+                project_id?: string;
+            };
             header?: never;
             path: {
                 /** @description The organization the key belongs to */

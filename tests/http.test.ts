@@ -6,7 +6,7 @@ import {
   FingerlyTimeoutError,
   verifyWebhook,
 } from "../src/index.js";
-const key = "fly_sk_us_development_test";
+const key = "fly_sk_development_test";
 const missing = () =>
   Response.json(
     {
@@ -18,24 +18,20 @@ const missing = () =>
 const event = { request_id: "stored", suspect_score: null };
 
 describe("bounded event reads", () => {
-  it("infers only regional endpoints and does not follow redirects", async () => {
-    for (const region of ["us", "eu"]) {
-      let target = "";
-      let redirect: RequestRedirect | undefined;
-      const client = load({
-        secretKey: `fly_sk_${region}_development_test`,
-        fetchImpl: async (url, init) => {
-          target = String(url);
-          redirect = init?.redirect;
-          return Response.json(event);
-        },
-      });
-      await client.events.get("id/a");
-      expect(target).toBe(
-        `https://${region}.api.fingerly.io/api/v1/events/id%2Fa`,
-      );
-      expect(redirect).toBe("manual");
-    }
+  it("defaults to the Fingerly API and does not follow redirects", async () => {
+    let target = "";
+    let redirect: RequestRedirect | undefined;
+    const client = load({
+      secretKey: "fly_sk_development_test",
+      fetchImpl: async (url, init) => {
+        target = String(url);
+        redirect = init?.redirect;
+        return Response.json(event);
+      },
+    });
+    await client.events.get("id/a");
+    expect(target).toBe("https://api.fingerly.io/api/v1/events/id%2Fa");
+    expect(redirect).toBe("manual");
   });
   it("preserves structured error metadata and the old constructor", async () => {
     const client = load({ secretKey: key, fetchImpl: async () => missing() });
@@ -167,13 +163,13 @@ describe("proxy boundary", () => {
     ).toThrow(TypeError);
     const fetchImpl = vi.fn(async () => Response.json({}));
     const proxy = createProxy({
-      proxyKey: "fly_px_us_development_test",
+      proxyKey: "fly_px_development_test",
       clientIp: () => "127.0.0.1",
       fetchImpl,
     });
     for (const publicKey of [
-      "fly_pk_eu_development_test",
-      "fly_pk_us_production_test",
+      // Another environment, the proxy's own key, and rubbish.
+      "fly_pk_production_test",
       key,
       "invalid",
     ]) {

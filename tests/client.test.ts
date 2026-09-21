@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { Fingerly, EventsClient, FingerlyProxy, load } from "../src/index.js";
 
-const secretKey = "fly_sk_us_development_test";
+const secretKey = "fly_sk_development_test";
 
 describe("Fingerly class API", () => {
   it("composes an events client and keeps load compatible", async () => {
@@ -19,7 +19,7 @@ describe("Fingerly class API", () => {
       suspect_score: 0,
     });
     expect(fetchImpl.mock.calls[0]?.[0]).toBe(
-      "https://us.api.fingerly.io/api/v1/events/request-1",
+      "https://api.fingerly.io/api/v1/events/request-1",
     );
     expect(load({ secretKey })).toBeInstanceOf(Fingerly);
   });
@@ -55,14 +55,14 @@ describe("Fingerly class API", () => {
       .fn<typeof fetch>()
       .mockImplementation(async () => new Response("{}"));
     const options = {
-      proxyKey: "fly_px_us_development_test",
+      proxyKey: "fly_px_development_test",
       clientIp: () => "203.0.113.1",
       fetchImpl,
     };
     const request = () =>
       new Request("https://shop.test/api/fingerly/api/v1/identify", {
         method: "POST",
-        headers: { "x-api-key": "fly_pk_us_development_test" },
+        headers: { "x-api-key": "fly_pk_development_test" },
         body: "{}",
       });
     const { handle } = new FingerlyProxy(options);
@@ -81,8 +81,8 @@ describe("API version configuration", () => {
     await client.events.get("request-1");
     await client.events.list({ limit: 10 });
     expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([
-      "https://us.api.fingerly.io/api/v2/events/request-1",
-      "https://us.api.fingerly.io/api/v2/events?limit=10",
+      "https://api.fingerly.io/api/v2/events/request-1",
+      "https://api.fingerly.io/api/v2/events?limit=10",
     ]);
   });
 
@@ -102,7 +102,7 @@ describe("API version configuration", () => {
       .fn<typeof fetch>()
       .mockImplementation(async () => new Response("{}"));
     const proxy = Fingerly.createProxy({
-      proxyKey: "fly_px_us_development_test",
+      proxyKey: "fly_px_development_test",
       apiVersion: "v2",
       clientIp: () => "203.0.113.1",
       fetchImpl,
@@ -110,7 +110,7 @@ describe("API version configuration", () => {
     const request = (path: string) =>
       new Request(`https://shop.test/api/fingerly${path}`, {
         method: "POST",
-        headers: { "x-api-key": "fly_pk_us_development_test" },
+        headers: { "x-api-key": "fly_pk_development_test" },
         body: "{}",
       });
     expect((await proxy(request("/api/v1/identify"))).status).toBe(404);
@@ -119,8 +119,8 @@ describe("API version configuration", () => {
       (await proxy(request("/api/v2/events/request-1/supplement"))).status,
     ).toBe(200);
     expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([
-      "https://us.api.fingerly.io/api/v2/identify",
-      "https://us.api.fingerly.io/api/v2/events/request-1/supplement",
+      "https://api.fingerly.io/api/v2/identify",
+      "https://api.fingerly.io/api/v2/events/request-1/supplement",
     ]);
   });
 });

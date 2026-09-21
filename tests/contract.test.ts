@@ -28,7 +28,7 @@ describe("server-owned contract fixtures", () => {
         true,
       );
       const client = load({
-        secretKey: "fly_sk_us_development_contract",
+        secretKey: "fly_sk_development_contract",
         fetchImpl: async () =>
           Response.json(fixture.body, { status: fixture.status }),
       });

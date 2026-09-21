@@ -49,7 +49,7 @@ export interface FingerlyOptions {
   secretKey: string;
   /** API route version. Defaults to v1; the server must support it. */
   apiVersion?: string;
-  /** Overrides the regional origin implied by the key, e.g. a local API. */
+  /** Overrides the Fingerly API origin, e.g. a local API. */
   endpoint?: string;
   /** Replacement `fetch`, for tests or a host with its own HTTP stack. */
   fetchImpl?: typeof fetch;

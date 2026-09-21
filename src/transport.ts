@@ -1,9 +1,9 @@
 import {
+  DEFAULT_ENDPOINT,
   normalizeApiVersion,
   normalizeOrigin,
   parseKey,
   positiveInt,
-  regionalOrigin,
 } from "./config.js";
 import { withDeadline } from "./deadline.js";
 import { FingerlyAPIError } from "./errors.js";
@@ -19,14 +19,14 @@ interface ErrorBody {
 }
 
 /**
- * Authenticated JSON reads against one regional Fingerly API.
+ * Authenticated JSON reads against the Fingerly API.
  *
  * Every request carries a deadline that covers receiving the body, refuses
  * redirects so the key is never replayed to another host, and reports failures
  * as {@link FingerlyAPIError} without echoing the response body.
  */
 export class APITransport {
-  /** Versioned base URL, e.g. `https://us.api.fingerly.io/api/v1`. */
+  /** Versioned base URL, e.g. `https://api.fingerly.io/api/v1`. */
   private readonly baseUrl: string;
   /** Deadline covering both the request and reading its JSON body. */
   private readonly timeoutMs: number;
@@ -42,8 +42,8 @@ export class APITransport {
   constructor(options: FingerlyOptions) {
     // Validate the key even when an endpoint is given, so a public, proxy or
     // management key can never reach an API that would accept it.
-    const scope = parseKey(options.secretKey, "sk");
-    const origin = normalizeOrigin(options.endpoint ?? regionalOrigin(scope));
+    parseKey(options.secretKey, "sk");
+    const origin = normalizeOrigin(options.endpoint ?? DEFAULT_ENDPOINT);
     const apiVersion = normalizeApiVersion(options.apiVersion);
 
     this.baseUrl = `${origin}/api/${apiVersion}`;

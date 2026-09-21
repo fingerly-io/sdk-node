@@ -8,20 +8,18 @@
 /** Kinds of key Fingerly issues: browser public, server secret, proxy. */
 export type KeyKind = "pk" | "sk" | "px";
 
-/** Region encoded in every key; it selects the regional API host. */
-export type Region = "eu" | "us";
-
 /** Deployment a key belongs to. Keys never cross environments. */
 export type Environment = "production" | "staging" | "development";
 
-/** The region and environment a key is scoped to. */
+/** The environment a key is scoped to. */
 export interface KeyScope {
-  region: Region;
   environment: Environment;
 }
 
-const KEY =
-  /^fly_(pk|sk|px)_(eu|us)_(production|staging|development)_[A-Za-z0-9_-]+$/;
+/** The one Fingerly API origin. */
+export const DEFAULT_ENDPOINT = "https://api.fingerly.io";
+
+const KEY = /^fly_(pk|sk|px)_(production|staging|development)_[A-Za-z0-9_-]+$/;
 
 const KEY_LABEL: Record<KeyKind, string> = {
   pk: "public",
@@ -38,30 +36,18 @@ const MAX_INT32 = 2_147_483_647;
 /**
  * Parses a Fingerly key and asserts it is of the expected kind.
  *
- * @param key The raw key, such as `fly_sk_us_production_…`.
+ * @param key The raw key, such as `fly_sk_production_…`.
  * @param expected The kind the caller requires.
- * @returns The region and environment the key is scoped to.
+ * @returns The environment the key is scoped to.
  * @throws {TypeError} If the key is malformed or of another kind.
  */
 export function parseKey(key: string, expected: KeyKind): KeyScope {
   const match = KEY.exec(key);
   if (!match || match[1] !== expected)
     throw new TypeError(
-      `A valid regional Fingerly ${KEY_LABEL[expected]} key is required`,
+      `A valid Fingerly ${KEY_LABEL[expected]} key is required`,
     );
-  return {
-    region: match[2] as Region,
-    environment: match[3] as Environment,
-  };
-}
-
-/**
- * Returns the Fingerly API origin serving a key's region.
- *
- * @param scope A scope from {@link parseKey}.
- */
-export function regionalOrigin(scope: KeyScope): string {
-  return `https://${scope.region}.api.fingerly.io`;
+  return { environment: match[2] as Environment };
 }
 
 /**

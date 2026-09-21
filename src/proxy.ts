@@ -1,9 +1,9 @@
 import {
+  DEFAULT_ENDPOINT,
   normalizeApiVersion,
   normalizeOrigin,
   parseKey,
   positiveInt,
-  regionalOrigin,
 } from "./config.js";
 import type { KeyScope } from "./config.js";
 import { withDeadline } from "./deadline.js";
@@ -51,7 +51,7 @@ const PLAIN_ADDRESS = /^[\x20-\x7e]*$/;
 export class FingerlyProxy {
   /** Server-held proxy key, or deprecated secret key, sent only to Fingerly. */
   private readonly key: string;
-  /** The key's region and environment, matched against the browser's key. */
+  /** The key's environment, matched against the browser's key. */
   private readonly scope: KeyScope;
   /** Fingerly origin requests are forwarded to. */
   private readonly upstream: string;
@@ -86,9 +86,7 @@ export class FingerlyProxy {
     this.usesProxyKey = Boolean(proxyKey);
     this.key = proxyKey ?? secretKey!;
     this.scope = parseKey(this.key, this.usesProxyKey ? "px" : "sk");
-    this.upstream = normalizeOrigin(
-      options.upstream ?? regionalOrigin(this.scope),
-    );
+    this.upstream = normalizeOrigin(options.upstream ?? DEFAULT_ENDPOINT);
     this.apiVersion = normalizeApiVersion(options.apiVersion);
     this.prefix = normalizePrefix(options.prefix ?? DEFAULT_PREFIX);
     this.maxBodyBytes = positiveInt(
@@ -163,9 +161,9 @@ export class FingerlyProxy {
   /**
    * Decides which key to present upstream.
    *
-   * With a proxy key the browser must supply a public key for the same region
-   * and environment, which the proxy forwards alongside its own. The
-   * deprecated secret-key mode authenticates on its own and accepts anything.
+   * With a proxy key the browser must supply a public key for the same
+   * environment, which the proxy forwards alongside its own. The deprecated
+   * secret-key mode authenticates on its own and accepts anything.
    *
    * @param presented The browser's `x-api-key` header, if any.
    * @returns The key to forward, or null when the caller is unauthorised.
@@ -174,10 +172,7 @@ export class FingerlyProxy {
     if (!this.usesProxyKey) return this.key;
     try {
       const browser = parseKey(presented ?? "", "pk");
-      const sameDeployment =
-        browser.region === this.scope.region &&
-        browser.environment === this.scope.environment;
-      return sameDeployment ? presented : null;
+      return browser.environment === this.scope.environment ? presented : null;
     } catch {
       return null;
     }

@@ -20,8 +20,8 @@ const page = await fingerly.events.list({ limit: 50, level: "high" });
 const event = await fingerly.events.get(page.rows[0]!.request_id);
 ```
 
-Event reads require `fly_sk_{eu|us}_{production|staging|development}_…` keys.
-The key selects the regional endpoint; `endpoint` overrides it for a local API.
+Event reads require `fly_sk_{production|staging|development}_…` keys. Requests
+go to `https://api.fingerly.io`; `endpoint` overrides that for a local API.
 Public, proxy, management, malformed and unsupported keys are rejected before
 network access. Requests do not follow redirects. Existing `get` and `list`
 operations perform one request. A request deadline includes receiving its JSON
@@ -85,7 +85,7 @@ export const POST = Fingerly.createProxy({
 Use that IP header only when your origin exclusively accepts trusted Cloudflare
 traffic; otherwise provide the callback appropriate to your infrastructure.
 The callback is required. Browser requests carry a public SDK key for the same
-region and environment as the proxy key. The proxy sends both keys upstream and
+environment as the proxy key. The proxy sends both keys upstream and
 forwards only identify/supplement paths and selected visitor metadata. It does
 not forward customer cookies or authorization headers. Bodies are limited to
 1 MiB by default and responses are marked `no-store`. `secretKey` remains a
