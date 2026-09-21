@@ -136,9 +136,7 @@ describe("same-origin proxy", () => {
     expect(upstream?.headers.get("x-fingerly-origin")).toBe(
       "https://shop.test",
     );
-    expect(upstream?.headers.get("x-api-key")).toBe(
-      "fly_pk_production_public",
-    );
+    expect(upstream?.headers.get("x-api-key")).toBe("fly_pk_production_public");
     expect(upstream?.headers.get("x-fingerly-proxy-key")).toBe(
       "fly_px_production_proxy",
     );
