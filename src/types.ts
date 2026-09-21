@@ -45,7 +45,7 @@ export interface EventListOptions {
 
 /** Options for the `Fingerly` client. */
 export interface FingerlyOptions {
-  /** Server-only key: `fly_sk_{eu|us}_{environment}_…`. Never ship it. */
+  /** Server-only key: `fly_sk_{environment}_…`. Never ship it. */
   secretKey: string;
   /** API route version. Defaults to v1; the server must support it. */
   apiVersion?: string;
