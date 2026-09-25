@@ -633,6 +633,8 @@ export interface components {
             target?: string;
         };
         IdentifyIn: {
+            /** @description The SDK's consent state; must be granted */
+            consent?: string;
             /** @description Which SDK collected these signals */
             sdk: components["schemas"]["SDKInfo"];
             /** @description The platform-specific signals the SDK collected */
@@ -682,6 +684,8 @@ export interface components {
             weight: number;
         };
         IngestIn: {
+            /** @description The SDK's consent state; must be granted */
+            consent?: string;
             /** @description Which SDK collected these signals */
             sdk: components["schemas"]["SDKInfo"];
             /** @description The platform-specific signals the SDK collected */
@@ -1126,6 +1130,8 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description The SDK's consent state; must be granted */
+                    consent?: string;
                     /** @description Which SDK collected these signals */
                     sdk: components["schemas"]["SDKInfo"];
                     /** @description A report containing only the deferred tier */
