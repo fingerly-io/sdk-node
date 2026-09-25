@@ -174,7 +174,7 @@ describe("proxy boundary", () => {
       "invalid",
     ]) {
       const r = await proxy(
-        new Request("https://shop.test/api/fingerly/api/v1/identify", {
+        new Request("https://shop.test/k7x2qm4a", {
           method: "POST",
           headers: { "x-api-key": publicKey },
           body: "{}",
@@ -193,7 +193,7 @@ describe("proxy boundary", () => {
     });
     await expect(
       proxy(
-        new Request("https://shop.test/api/fingerly/api/v1/identify", {
+        new Request("https://shop.test/k7x2qm4a", {
           method: "POST",
           body: "{}",
         }),

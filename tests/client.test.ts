@@ -60,7 +60,7 @@ describe("Fingerly class API", () => {
       fetchImpl,
     };
     const request = () =>
-      new Request("https://shop.test/api/fingerly/api/v1/identify", {
+      new Request("https://shop.test/k7x2qm4a", {
         method: "POST",
         headers: { "x-api-key": "fly_pk_development_test" },
         body: "{}",
@@ -97,7 +97,7 @@ describe("API version configuration", () => {
     },
   );
 
-  it("accepts only the configured version in proxy routes", async () => {
+  it("forwards to the configured version's ingest URL", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockImplementation(async () => new Response("{}"));
@@ -107,20 +107,16 @@ describe("API version configuration", () => {
       clientIp: () => "203.0.113.1",
       fetchImpl,
     });
-    const request = (path: string) =>
-      new Request(`https://shop.test/api/fingerly${path}`, {
+    const request = () =>
+      new Request("https://shop.test/k7x2qm4a", {
         method: "POST",
         headers: { "x-api-key": "fly_pk_development_test" },
         body: "{}",
       });
-    expect((await proxy(request("/api/v1/identify"))).status).toBe(404);
-    expect((await proxy(request("/api/v2/identify"))).status).toBe(200);
-    expect(
-      (await proxy(request("/api/v2/events/request-1/supplement"))).status,
-    ).toBe(200);
+    expect((await proxy(request())).status).toBe(200);
     expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([
-      "https://api.fingerly.io/api/v2/identify",
-      "https://api.fingerly.io/api/v2/events/request-1/supplement",
+      "https://api.fingerly.io/api/v2/ingest",
     ]);
   });
+
 });

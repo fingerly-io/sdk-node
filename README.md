@@ -73,23 +73,34 @@ signature in the comma-separated header is accepted.
 
 ## Same-origin proxy
 
+Serves the browser SDK from a path on your own site, which is what gets it past
+content blockers. Create a proxy in the dashboard (**Integration > Proxy
+keys**), then mount the handler at the path it issued. In Next.js that is the
+route file for the path, here `app/k7x2qm4a/route.ts`:
+
 ```ts
 import { Fingerly } from "@fingerly/node";
 export const POST = Fingerly.createProxy({
   proxyKey: process.env.FINGERLY_PROXY_KEY!,
-  prefix: "/api/fingerly",
   clientIp: (request) => request.headers.get("cf-connecting-ip")!,
 });
 ```
 
+and point the browser SDK at it with `endpoints: "/k7x2qm4a"`. Where the handler
+is not already routed to that one path, pass `path: "/k7x2qm4a"` and it answers
+only that path, exactly.
+
 Use that IP header only when your origin exclusively accepts trusted Cloudflare
 traffic; otherwise provide the callback appropriate to your infrastructure.
 The callback is required. Browser requests carry a public SDK key for the same
-environment as the proxy key. The proxy sends both keys upstream and
-forwards only identify/supplement paths and selected visitor metadata. It does
-not forward customer cookies or authorization headers. Bodies are limited to
-1 MiB by default and responses are marked `no-store`. `secretKey` remains a
-deprecated proxy option; do not pass it together with `proxyKey`.
+environment as the proxy key. The proxy sends both keys upstream, to Fingerly's
+one ingest URL, with selected visitor metadata. It does not forward customer
+cookies or authorization headers, and relays back only `content-type`,
+`x-request-id` and the rate limit headers, so nothing on the response names
+Fingerly. Bodies are limited to 1 MiB by default and responses are marked
+`no-store`. It reports itself upstream as `node/0.1.0`, which the dashboard
+shows per proxy. `secretKey` remains a deprecated proxy option; do not pass it
+together with `proxyKey`.
 
 ## Development and release preparation
 
@@ -115,7 +126,7 @@ disabled until release authorization and registry setup are complete.
 
 `client.ts` composes the public `Fingerly` class. `events.ts` owns event reads
 and the list filters; `transport.ts` owns authenticated HTTP and API errors. `proxy.ts`
-handles proxy routing, headers, and bounded body reads. `webhooks.ts` verifies
+handles the proxy path, headers, and bounded body reads. `webhooks.ts` verifies
 signatures. `config.ts` validates every caller-supplied option: keys, origins,
 API versions, and durations, all before any network access. Shared public types,
 errors, and cancellation helpers live in `types.ts`, `errors.ts`, and

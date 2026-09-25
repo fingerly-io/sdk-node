@@ -113,14 +113,24 @@ describe("same-origin proxy", () => {
     let upstream: Request | undefined;
     const proxy = createProxy({
       proxyKey: "fly_px_production_proxy",
+      path: "/k7x2qm4a",
       clientIp: () => "203.0.113.10",
       fetchImpl: async (input, init) => {
         upstream = new Request(input, init);
-        return Response.json({ request_id: "one" });
+        return Response.json(
+          { request_id: "one" },
+          {
+            headers: {
+              "x-request-id": "one",
+              "fingerly-balance-micros": "100",
+              "set-cookie": "a=b",
+            },
+          },
+        );
       },
     });
     const response = await proxy(
-      new Request("https://shop.test/api/fingerly/api/v1/identify", {
+      new Request("https://shop.test/k7x2qm4a", {
         method: "POST",
         headers: {
           origin: "https://shop.test",
@@ -131,7 +141,10 @@ describe("same-origin proxy", () => {
       }),
     );
     expect(response.status).toBe(200);
-    expect(upstream?.url).toBe("https://api.fingerly.io/api/v1/identify");
+    expect(upstream?.url).toBe("https://api.fingerly.io/api/v1/ingest");
+    expect(upstream?.headers.get("x-fingerly-proxy-version")).toBe(
+      "node/0.1.0",
+    );
     expect(upstream?.headers.get("x-fingerly-client-ip")).toBe("203.0.113.10");
     expect(upstream?.headers.get("x-fingerly-origin")).toBe(
       "https://shop.test",
@@ -142,11 +155,18 @@ describe("same-origin proxy", () => {
     );
     expect(upstream?.headers.get("cookie")).toBeNull();
     expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("x-request-id")).toBe("one");
+    // Nothing relayed may name Fingerly: a blocker can match a header name.
+    const relayed: string[] = [];
+    response.headers.forEach((_value, name) => relayed.push(name));
+    expect(relayed.join(" ")).not.toMatch(
+      /fingerly|set-cookie/,
+    );
 
     expect(
       (
         await proxy(
-          new Request("https://shop.test/api/fingerly/admin", {
+          new Request("https://shop.test/k7x2qm4a/admin", {
             method: "POST",
           }),
         )
@@ -168,7 +188,7 @@ describe("same-origin proxy", () => {
     expect(
       (
         await proxy(
-          new Request("https://shop.test/api/fingerly/api/v1/identify", {
+          new Request("https://shop.test/k7x2qm4a", {
             method: "POST",
             body: "{}",
           }),
@@ -178,7 +198,7 @@ describe("same-origin proxy", () => {
     expect(
       (
         await proxy(
-          new Request("https://shop.test/api/fingerly/api/v1/identify", {
+          new Request("https://shop.test/k7x2qm4a", {
             method: "POST",
             headers: { "x-api-key": "fly_pk_development_public" },
             body: "long",

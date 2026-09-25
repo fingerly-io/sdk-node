@@ -79,12 +79,16 @@ export interface ProxyOptions {
   proxyKey?: string;
   /** @deprecated Use proxyKey. Secret read keys will be refused in the next major version. */
   secretKey?: string;
-  /** API route version accepted locally and forwarded upstream. Defaults to v1. */
+  /** API route version forwarded upstream. Defaults to v1. */
   apiVersion?: string;
   /** Overrides the upstream origin implied by the key. */
   upstream?: string;
-  /** Local mount path, stripped before forwarding. Defaults to `/api/fingerly`. */
-  prefix?: string;
+  /**
+   * The path the dashboard issued for this proxy, such as `/k7x2qm4a`, matched
+   * exactly. Omit it when the framework already routes only that path to the
+   * handler, as a Next.js `app/k7x2qm4a/route.ts` does.
+   */
+  path?: string;
   /** Request body limit; larger requests get HTTP 413. Defaults to 1 MiB. */
   maxBodyBytes?: number;
   /** Deadline covering the body read, IP lookup and upstream call. Defaults to 5000. */
