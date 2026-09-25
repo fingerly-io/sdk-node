@@ -101,6 +101,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ingest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit from the browser SDK
+         * @description The one URL the browser SDK and every first-party proxy post to. A body with a `token` is a deferred report and is answered `202` with `request_id` and `duplicate`, exactly as the deferred report route answers. Any other body is an identification and is answered `200` with the complete verdict, exactly as the identify route answers.
+         *
+         *     It exists so a proxy can forward everything it receives to a single path, and so the SDK can post both calls to one path of the customer's choosing, with nothing appended that a content blocker could match across sites.
+         */
+        post: operations["submitFromBrowserSdk"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/management/key": {
         parameters: {
             query?: never;
@@ -115,6 +137,64 @@ export interface paths {
         get: operations["describeManagementKey"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/management/organizations/{organization_id}/hosted-domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List hosted domains
+         * @description `available` says whether hosted domains can be added on this deployment, and `target` is what each one's CNAME points at.
+         */
+        get: operations["listHostedDomains"];
+        put?: never;
+        /**
+         * Add a hosted domain
+         * @description Registers a subdomain of your site for Fingerly to serve the browser SDK on, and asks for its certificate. It becomes `active` once your CNAME to `target` resolves and the certificate is issued. Omit `path` for a random one.
+         */
+        post: operations["addHostedDomain"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/management/organizations/{organization_id}/hosted-domains/{hosted_domain_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a hosted domain */
+        delete: operations["removeHostedDomain"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/management/organizations/{organization_id}/hosted-domains/{hosted_domain_id}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check a hosted domain now */
+        post: operations["checkHostedDomainNow"];
         delete?: never;
         options?: never;
         head?: never;
@@ -140,6 +220,26 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/management/organizations/{organization_id}/proxy-credentials/{proxy_credential_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a proxy key
+         * @description Changes the name, the kind, or the path the browser SDK posts to. The key itself is unchanged. Omit `path` for a new random one.
+         */
+        patch: operations["updateProxyKey"];
         trace?: never;
     };
     "/api/v1/management/organizations/{organization_id}/proxy-credentials/{proxy_credential_id}/revoke": {
@@ -510,6 +610,28 @@ export interface components {
             /** Format: int32 */
             weight: number;
         };
+        HostedDomainOut: {
+            /** Format: date-time */
+            activated_at?: string | null;
+            /** Format: date-time */
+            checked_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            hostname: string;
+            id: string;
+            path: string;
+            /** @description What is holding the certificate up, in the provider's words */
+            problem?: string;
+            /** @description pending, active or failed */
+            status: string;
+        };
+        HostedDomainsOut: {
+            /** @description Whether hosted domains can be added on this deployment */
+            available: boolean;
+            domains: components["schemas"]["HostedDomainOut"][];
+            /** @description What each hosted domain's CNAME points at */
+            target?: string;
+        };
         IdentifyIn: {
             /** @description Which SDK collected these signals */
             sdk: components["schemas"]["SDKInfo"];
@@ -559,6 +681,18 @@ export interface components {
             /** Format: int64 */
             weight: number;
         };
+        IngestIn: {
+            /** @description Which SDK collected these signals */
+            sdk: components["schemas"]["SDKInfo"];
+            /** @description The platform-specific signals the SDK collected */
+            signals: {
+                [key: string]: unknown;
+            };
+            /** @description An opaque value echoed back on the event. Identify only */
+            tag?: string;
+            /** @description The deferred_token returned by identify. Present only on a deferred report */
+            token?: string;
+        };
         IssuedProxyCredentialOut: {
             credential: components["schemas"]["ProxyCredentialOut"];
             /** @description Returned once and never stored in plaintext */
@@ -583,11 +717,24 @@ export interface components {
             /** Format: date-time */
             expires_at?: string | null;
             id: string;
+            /** @description cloudflare_worker, server_sdk or custom */
+            kind: string;
             last4: string;
+            /** @description The page origin last seen through the proxy */
+            last_origin?: string;
             /** Format: date-time */
             last_used_at?: string | null;
+            /** @description What the proxy last reported itself as, such as cloudflare-worker/0.2.0 */
+            last_version?: string;
             name: string;
+            /** @description Where the browser SDK posts on your site */
+            path?: string;
             prefix: string;
+            /**
+             * Format: int64
+             * @description Requests forwarded over the last 30 days
+             */
+            requests_30d: number;
             /** Format: date-time */
             revoked_at?: string | null;
             status: string;
@@ -1143,6 +1290,102 @@ export interface operations {
             };
         };
     };
+    submitFromBrowserSdk: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IngestIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentifyOut"];
+                };
+            };
+            /** @description The deferred report was accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No usable x-api-key header was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The organization this key belongs to is not accepting traffic */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The body is over 1 MiB */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request could not be validated. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The organization is over its rate limit */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The submission could not be answered just now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     describeManagementKey: {
         parameters: {
             query?: never;
@@ -1181,6 +1424,292 @@ export interface operations {
             };
             /** @description No such resource in the key's organization */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listHostedDomains: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostedDomainsOut"];
+                };
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Only an admin key may manage hosted domains */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such resource in the key's organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request could not be validated. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    addHostedDomain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description A subdomain of your site, such as k7.shop.example, that you will CNAME to target */
+                    hostname: string;
+                    /** @description Where the browser SDK posts on it. Omit it for a random one */
+                    path?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostedDomainOut"];
+                };
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Only an admin key may manage hosted domains */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such resource in the key's organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The hostname is taken, or hosted domains are not available */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The hostname or path is not usable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    removeHostedDomain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+                hosted_domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Only an admin key may manage hosted domains */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such resource in the key's organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request could not be validated. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    checkHostedDomainNow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+                hosted_domain_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostedDomainOut"];
+                };
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Only an admin key may manage hosted domains */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such resource in the key's organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request could not be validated. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1280,7 +1809,11 @@ export interface operations {
                 "application/json": {
                     /** @description production, staging or development */
                     environment: string;
+                    /** @description cloudflare_worker, server_sdk or custom. Defaults to custom */
+                    kind?: string;
                     name: string;
+                    /** @description Where the browser SDK posts on your site, such as /k7x2qm4a. Omit it for a random one */
+                    path?: string;
                 };
             };
         };
@@ -1322,6 +1855,84 @@ export interface operations {
                 };
             };
             /** @description The request could not be validated. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateProxyKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+                proxy_credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description cloudflare_worker, server_sdk or custom */
+                    kind: string;
+                    name: string;
+                    /** @description Where the browser SDK posts on your site. Omit it for a new random one */
+                    path?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProxyCredentialOut"];
+                };
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Only an admin key may manage proxy keys */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such resource in the key's organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The path is not usable, or the kind is not known */
             422: {
                 headers: {
                     [name: string]: unknown;
