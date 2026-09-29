@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "description": "Server-side Fingerly SDK for event reads, webhook verification, and same-origin proxying",
+  "license": "Apache-2.0",
+  "repository": {"type": "git", "url": "https://github.com/fingerly-io/sdk-node.git"},
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
