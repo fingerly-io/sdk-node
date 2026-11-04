@@ -7,6 +7,7 @@ import {
 } from "./config.js";
 import type { KeyScope } from "./config.js";
 import { withDeadline } from "./deadline.js";
+import { REDACTED, inspectCustom } from "./redact.js";
 import type { ProxyOptions } from "./types.js";
 
 const DEFAULT_MAX_BODY_BYTES = 1_048_576;
@@ -45,8 +46,11 @@ const PLAIN_ADDRESS = /^[\x20-\x7e]*$/;
  * relays nothing back that names Fingerly.
  */
 export class FingerlyProxy {
-  /** Server-held proxy key, or deprecated secret key, sent only to Fingerly. */
-  private readonly key: string;
+  /**
+   * Server-held proxy key, or deprecated secret key, sent only to Fingerly. A
+   * `#private` field, so inspecting or serialising the proxy never shows it.
+   */
+  readonly #key: string;
   /** The key's environment, matched against the browser's key. */
   private readonly scope: KeyScope;
   /** The one URL requests are forwarded to. */
@@ -78,8 +82,8 @@ export class FingerlyProxy {
       throw new TypeError("clientIp is required");
 
     this.usesProxyKey = Boolean(proxyKey);
-    this.key = proxyKey ?? secretKey!;
-    this.scope = parseKey(this.key, this.usesProxyKey ? "px" : "sk");
+    this.#key = proxyKey ?? secretKey!;
+    this.scope = parseKey(this.#key, this.usesProxyKey ? "px" : "sk");
     this.upstreamUrl =
       normalizeOrigin(options.upstream ?? DEFAULT_ENDPOINT) +
       `/api/${normalizeApiVersion(options.apiVersion)}/ingest`;
@@ -134,6 +138,21 @@ export class FingerlyProxy {
     });
   };
 
+  /** What `JSON.stringify` and `console.log` show: everything but the key. */
+  toJSON(): Record<string, unknown> {
+    return {
+      upstreamUrl: this.upstreamUrl,
+      path: this.path,
+      maxBodyBytes: this.maxBodyBytes,
+      timeoutMs: this.timeoutMs,
+      key: REDACTED,
+    };
+  }
+
+  [inspectCustom](): Record<string, unknown> {
+    return this.toJSON();
+  }
+
   /**
    * Decides which key to present upstream.
    *
@@ -145,7 +164,7 @@ export class FingerlyProxy {
    * @returns The key to forward, or null when the caller is unauthorised.
    */
   private upstreamKeyFor(presented: string | null): string | null {
-    if (!this.usesProxyKey) return this.key;
+    if (!this.usesProxyKey) return this.#key;
     try {
       const browser = parseKey(presented ?? "", "pk");
       return browser.environment === this.scope.environment ? presented : null;
@@ -179,7 +198,7 @@ export class FingerlyProxy {
       "x-fingerly-user-agent": request.headers.get("user-agent") ?? "",
       "x-fingerly-proxy-version": PROXY_VERSION,
     });
-    if (this.usesProxyKey) headers.set("x-fingerly-proxy-key", this.key);
+    if (this.usesProxyKey) headers.set("x-fingerly-proxy-key", this.#key);
     const idempotencyKey = request.headers.get("idempotency-key");
     if (idempotencyKey) headers.set("idempotency-key", idempotencyKey);
     return headers;

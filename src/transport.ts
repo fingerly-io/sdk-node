@@ -8,6 +8,7 @@ import {
 import { withDeadline } from "./deadline.js";
 import { FingerlyAPIError } from "./errors.js";
 import type { APIErrorMetadata } from "./errors.js";
+import { REDACTED, inspectCustom } from "./redact.js";
 import type { FingerlyOptions } from "./types.js";
 
 const DEFAULT_TIMEOUT_MS = 5_000;
@@ -32,8 +33,11 @@ export class APITransport {
   private readonly timeoutMs: number;
   /** HTTP implementation; replaceable in tests or custom hosts. */
   private readonly fetchImpl: typeof fetch;
-  /** Server-only read key, sent as `x-api-key` and redacted from errors. */
-  private readonly secretKey: string;
+  /**
+   * Server-only read key, sent as `x-api-key` and redacted from errors. A
+   * `#private` field, so inspecting or serialising the client never shows it.
+   */
+  readonly #secretKey: string;
 
   /**
    * @param options Client options; all of them are validated here.
@@ -52,7 +56,7 @@ export class APITransport {
       "timeoutMs",
     );
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
-    this.secretKey = options.secretKey;
+    this.#secretKey = options.secretKey;
   }
 
   /**
@@ -66,7 +70,7 @@ export class APITransport {
   get<T>(path: string, signal?: AbortSignal): Promise<T> {
     return withDeadline(this.timeoutMs, signal, async (bounded) => {
       const response = await this.fetchImpl(this.baseUrl + path, {
-        headers: { "x-api-key": this.secretKey, accept: "application/json" },
+        headers: { "x-api-key": this.#secretKey, accept: "application/json" },
         redirect: "manual",
         signal: bounded,
       });
@@ -100,8 +104,21 @@ export class APITransport {
     );
   }
 
+  /** What `JSON.stringify` and `console.log` show: everything but the key. */
+  toJSON(): Record<string, unknown> {
+    return {
+      baseUrl: this.baseUrl,
+      timeoutMs: this.timeoutMs,
+      secretKey: REDACTED,
+    };
+  }
+
+  [inspectCustom](): Record<string, unknown> {
+    return this.toJSON();
+  }
+
   /** Strips the secret key from anything an error may carry to logs. */
   private redact(value: string): string {
-    return value.split(this.secretKey).join("[redacted]");
+    return value.split(this.#secretKey).join("[redacted]");
   }
 }
