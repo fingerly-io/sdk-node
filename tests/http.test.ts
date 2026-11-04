@@ -338,6 +338,44 @@ describe("proxy boundary", () => {
     expect(seen).toEqual(["203.0.113.1", "2001:db8::1", "203.0.113.9"]);
   });
 
+  it("answers only the exact configured path", async () => {
+    const fetchImpl = vi.fn(async () => Response.json({}));
+    const proxy = createProxy({
+      secretKey: key,
+      path: "/k7x2qm4a/",
+      clientIp: () => "127.0.0.1",
+      fetchImpl,
+    });
+    const status = async (path: string) =>
+      (
+        await proxy(
+          new Request(`https://shop.test${path}`, {
+            method: "POST",
+            body: "{}",
+          }),
+        )
+      ).status;
+    expect(await status("/k7x2qm4a")).toBe(200);
+    expect(await status("/k7x2qm4a?v=1")).toBe(200);
+    for (const path of [
+      "/k7x2qm4a/",
+      "/k7x2qm4a//",
+      "//k7x2qm4a",
+      "/k7x2qm4a/x",
+      "/k7x2qm4ax",
+      "/K7X2QM4A",
+      "/k7x2qm4%61",
+      "/k7x2qm4a%2F",
+      "/x/k7x2qm4a",
+    ])
+      expect(await status(path), path).toBe(404);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    for (const path of ["k7x2qm4a", "/", "/a/../b", "/a%2fb", "/a b", "/a?b"])
+      expect(() =>
+        createProxy({ secretKey: key, path, clientIp: () => "127.0.0.1" }),
+      ).toThrow(TypeError);
+  });
+
   it("logs one line per failure to the console without a hook", async () => {
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     const proxy = createProxy({

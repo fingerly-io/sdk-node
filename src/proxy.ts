@@ -130,7 +130,10 @@ export class FingerlyProxy {
    */
   private async forward(request: Request, peer: ProxyPeer): Promise<Response> {
     const url = new URL(request.url);
-    if (this.path !== null && url.pathname.replace(/\/+$/, "") !== this.path)
+    // Exactly the issued path: no prefix, no trailing or doubled slash, no
+    // encoded characters, case-sensitive. Dot segments were already resolved
+    // when the URL was parsed; the Node handler refuses them before that.
+    if (this.path !== null && url.pathname !== this.path)
       return refuse(404, "Not Found");
     if (request.method !== "POST")
       return refuse(405, "Method Not Allowed", { allow: "POST" });
@@ -345,7 +348,7 @@ export function createProxy(options: ProxyOptions): FingerlyProxy["handle"] {
  */
 function normalizePath(value: string): string {
   const path = value.trim().replace(/\/+$/, "");
-  if (!path.startsWith("/") || path.length < 2 || /[?#]/.test(path))
+  if (!/^(\/[A-Za-z0-9_~-]+)+$/.test(path))
     throw new TypeError("path must be an absolute URL path such as /k7x2qm4a");
   return path;
 }

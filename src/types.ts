@@ -93,7 +93,8 @@ export interface ProxyOptions {
   upstream?: string;
   /**
    * The path the dashboard issued for this proxy, such as `/k7x2qm4a`, matched
-   * exactly. Omit it when the framework already routes only that path to the
+   * exactly: no prefix, trailing slash, doubled slash, dot segment or encoded
+   * character, and case-sensitive. Omit it when the framework already routes only that path to the
    * handler, as a Next.js `app/k7x2qm4a/route.ts` does.
    */
   path?: string;
