@@ -11,7 +11,15 @@ import { MAX_RESPONSE_BYTES, readLimited } from "./body.js";
 import { withDeadline } from "./deadline.js";
 import { FingerlyTimeoutError } from "./errors.js";
 import { REDACTED, inspectCustom } from "./redact.js";
-import type { ProxyFailure, ProxyOptions, ProxyPeer } from "./types.js";
+import { serveNode } from "./node.js";
+import type {
+  NodeNext,
+  NodeRequest,
+  NodeResponse,
+  ProxyFailure,
+  ProxyOptions,
+  ProxyPeer,
+} from "./types.js";
 
 const DEFAULT_MAX_BODY_BYTES = 1_048_576;
 const DEFAULT_TIMEOUT_MS = 5_000;
@@ -121,6 +129,34 @@ export class FingerlyProxy {
    */
   readonly handle = (request: Request): Promise<Response> =>
     this.forward(request, {});
+
+  /**
+   * Handles one request from a Node server: Express, NestJS (Express or
+   * Fastify adapter) or `node:http`. Mount it before any body parser.
+   *
+   * It matches the raw path (calling `next` for any other path, so it can be
+   * mounted globally), streams the body unread, passes the TCP peer address
+   * to `clientIp` as `peer.remoteAddress`, cancels upstream when the visitor
+   * disconnects, and writes the answer. It never throws.
+   */
+  readonly handleNode = (
+    req: NodeRequest,
+    res: NodeResponse,
+    next?: NodeNext,
+  ): Promise<void> =>
+    serveNode(
+      {
+        path: this.path,
+        forward: (request, peer) => this.forward(request, peer),
+        misconfigured: (problem, message) =>
+          this.reportOnce(problem, { kind: "misconfigured", message }),
+      },
+      req,
+      res,
+      next,
+    ).catch(() => {
+      // serveNode answers every failure itself; this only guards the promise.
+    });
 
   /**
    * The shared path behind {@link handle} and the Node handler.
@@ -340,6 +376,18 @@ export class FingerlyProxy {
  */
 export function createProxy(options: ProxyOptions): FingerlyProxy["handle"] {
   return new FingerlyProxy(options).handle;
+}
+
+/**
+ * Creates a bound Node handler: `(req, res, next?) => void` middleware for
+ * Express, NestJS and `node:http`.
+ *
+ * Equivalent to `new FingerlyProxy(options).handleNode`.
+ */
+export function createNodeProxy(
+  options: ProxyOptions,
+): FingerlyProxy["handleNode"] {
+  return new FingerlyProxy(options).handleNode;
 }
 
 /**

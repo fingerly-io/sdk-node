@@ -51,6 +51,17 @@ export class Fingerly {
   static createProxy(options: ProxyOptions): FingerlyProxy["handle"] {
     return new FingerlyProxy(options).handle;
   }
+
+  /**
+   * Creates a same-origin proxy as Node middleware, for Express, NestJS and
+   * `node:http`.
+   *
+   * @param options Proxy key, path and the callback resolving the visitor's IP.
+   * @returns A bound `(req, res, next?)` handler; mount it before body parsers.
+   */
+  static createNodeProxy(options: ProxyOptions): FingerlyProxy["handleNode"] {
+    return new FingerlyProxy(options).handleNode;
+  }
 }
 
 /**

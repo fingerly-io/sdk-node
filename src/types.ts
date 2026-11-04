@@ -139,3 +139,24 @@ export interface ProxyFailure {
   /** One line, without stack, body or credentials. */
   message: string;
 }
+
+/**
+ * The parts of a Node `IncomingMessage` the Node handler reads. Express,
+ * NestJS and Fastify middleware all pass one; typed structurally so the
+ * declarations do not require `@types/node`.
+ */
+export interface NodeRequest {
+  readonly method?: string | undefined;
+  readonly url?: string | undefined;
+  readonly headers: Record<string, string | string[] | undefined>;
+}
+
+/** The parts of a Node `ServerResponse` the Node handler writes. */
+export interface NodeResponse {
+  statusCode: number;
+  setHeader(name: string, value: number | string | readonly string[]): unknown;
+  end(chunk?: unknown): unknown;
+}
+
+/** Express-style continuation, called when the request is not for the proxy. */
+export type NodeNext = (error?: unknown) => void;

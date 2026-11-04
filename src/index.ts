@@ -7,7 +7,7 @@
 
 export { Fingerly, load } from "./client.js";
 export { EventsClient } from "./events.js";
-export { FingerlyProxy, createProxy } from "./proxy.js";
+export { FingerlyProxy, createNodeProxy, createProxy } from "./proxy.js";
 export { verifyWebhook } from "./webhooks.js";
 export {
   FingerlyAPIError,
@@ -21,6 +21,9 @@ export type {
   EventPage,
   EventListOptions,
   FingerlyOptions,
+  NodeNext,
+  NodeRequest,
+  NodeResponse,
   ProxyFailure,
   ProxyOptions,
   ProxyPeer,
