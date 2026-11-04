@@ -101,8 +101,15 @@ export interface ProxyOptions {
   maxBodyBytes?: number;
   /** Deadline covering the body read, IP lookup and upstream call. Defaults to 5000. */
   timeoutMs?: number;
-  /** Resolve the visitor address only from infrastructure your app trusts. */
-  clientIp(request: Request): string | Promise<string>;
+  /**
+   * Returns the visitor's address: exactly one IPv4 or IPv6 literal. Take it
+   * only from infrastructure your app trusts. `peer.remoteAddress` is the TCP
+   * peer where the server exposes it (the Node handler does; a Fetch route
+   * usually cannot). Anything else, including null from a missing header, is
+   * a configuration error: the request is answered 500 without calling
+   * upstream, and the problem is logged once per process.
+   */
+  clientIp(request: Request, peer: ProxyPeer): string | Promise<string>;
   /** Replacement `fetch` for the upstream call. */
   fetchImpl?: typeof fetch;
   /**
@@ -111,6 +118,12 @@ export interface ProxyOptions {
    * and configuration problems 500; the handler itself never throws.
    */
   onError?: ((failure: ProxyFailure) => void) | undefined;
+}
+
+/** What the server knows about the connection a request arrived on. */
+export interface ProxyPeer {
+  /** The TCP peer address, when the server exposes it. */
+  remoteAddress?: string | undefined;
 }
 
 /** A problem the proxy answered for instead of forwarding. */

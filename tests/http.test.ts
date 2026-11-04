@@ -289,6 +289,55 @@ describe("proxy boundary", () => {
     expect(truncated.status).toBe(502);
   });
 
+  it("accepts exactly one IP address from clientIp", async () => {
+    const failures: string[] = [];
+    const seen: (string | null)[] = [];
+    const fetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers).get("x-fingerly-client-ip"));
+      return Response.json({});
+    });
+    const send = (clientIp: () => unknown) =>
+      createProxy({
+        secretKey: key,
+        clientIp: clientIp as () => string,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        onError: (failure) => failures.push(failure.message),
+      })(
+        new Request("https://shop.test/k7x2qm4a", {
+          method: "POST",
+          body: "{}",
+        }),
+      );
+    for (const value of [
+      null,
+      undefined,
+      "",
+      "null",
+      "203.0.113.1, 198.51.100.2",
+      " 203.0.113.1",
+      "unknown",
+      42,
+    ]) {
+      const r = await send(() => value);
+      expect(r.status).toBe(500);
+      expect(await r.text()).toBe(
+        "Proxy misconfigured: the client IP callback returned no valid address",
+      );
+    }
+    const thrown = await send(() => {
+      throw new Error("header missing");
+    });
+    expect(thrown.status).toBe(500);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    // Once per process, however many requests repeat the mistake.
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toMatch(/client IP callback returned null/);
+
+    for (const value of ["203.0.113.1", "2001:db8::1", "::ffff:203.0.113.9"])
+      expect((await send(() => value)).status).toBe(200);
+    expect(seen).toEqual(["203.0.113.1", "2001:db8::1", "203.0.113.9"]);
+  });
+
   it("logs one line per failure to the console without a hook", async () => {
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     const proxy = createProxy({

@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import {
   DEFAULT_ENDPOINT,
   normalizeApiVersion,
@@ -10,7 +11,7 @@ import { MAX_RESPONSE_BYTES, readLimited } from "./body.js";
 import { withDeadline } from "./deadline.js";
 import { FingerlyTimeoutError } from "./errors.js";
 import { REDACTED, inspectCustom } from "./redact.js";
-import type { ProxyFailure, ProxyOptions } from "./types.js";
+import type { ProxyFailure, ProxyOptions, ProxyPeer } from "./types.js";
 
 const DEFAULT_MAX_BODY_BYTES = 1_048_576;
 const DEFAULT_TIMEOUT_MS = 5_000;
@@ -34,8 +35,8 @@ const RELAYED_HEADERS = [
   "retry-after",
 ];
 
-/** A client IP must be a printable one-line token, or `Headers` would reject it. */
-const PLAIN_ADDRESS = /^[\x20-\x7e]*$/;
+/** An IPv4 address carried in IPv6 form, as dual-stack sockets report it. */
+const MAPPED_IPV4 = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i;
 
 /**
  * Same-origin handler for the browser SDK.
@@ -118,7 +119,16 @@ export class FingerlyProxy {
    * @returns The upstream response, or 404/405/401/413 when it is refused
    *   before any forwarding.
    */
-  readonly handle = async (request: Request): Promise<Response> => {
+  readonly handle = (request: Request): Promise<Response> =>
+    this.forward(request, {});
+
+  /**
+   * The shared path behind {@link handle} and the Node handler.
+   *
+   * @param peer What the server knows about the TCP connection, passed to
+   *   `clientIp`; empty where the framework does not expose it.
+   */
+  private async forward(request: Request, peer: ProxyPeer): Promise<Response> {
     const url = new URL(request.url);
     if (this.path !== null && url.pathname.replace(/\/+$/, "") !== this.path)
       return refuse(404, "Not Found");
@@ -144,6 +154,13 @@ export class FingerlyProxy {
         this.timeoutMs,
         request.signal,
         async (signal) => {
+          // The address first: a bad callback must not cost a body read.
+          const headers = await this.upstreamHeaders(
+            request,
+            url,
+            apiKey,
+            peer,
+          );
           const body = await readLimited(
             request.body,
             this.maxBodyBytes,
@@ -152,7 +169,7 @@ export class FingerlyProxy {
           if (body === null) return refuse(413, "Payload Too Large");
           const response = await this.fetchImpl(this.upstreamUrl, {
             method: "POST",
-            headers: await this.upstreamHeaders(request, url, apiKey),
+            headers,
             body,
             redirect: "manual",
             signal,
@@ -163,7 +180,7 @@ export class FingerlyProxy {
     } catch (error) {
       return this.gatewayFailure(request, error);
     }
-  };
+  }
 
   /**
    * Answers an upstream problem the way a gateway does, never by throwing:
@@ -173,6 +190,16 @@ export class FingerlyProxy {
    * with it and there is nobody to answer, so nothing is logged.
    */
   private gatewayFailure(request: Request, error: unknown): Response {
+    if (error instanceof ClientIpUnusable) {
+      this.reportOnce("client-ip", {
+        kind: "misconfigured",
+        message: `the client IP callback ${error.message}; every proxied request answers 500`,
+      });
+      return refuse(
+        500,
+        "Proxy misconfigured: the client IP callback returned no valid address",
+      );
+    }
     if (request.signal.aborted) return refuse(499, "Client Closed Request");
     if (error instanceof FingerlyTimeoutError) {
       this.report({
@@ -276,16 +303,16 @@ export class FingerlyProxy {
    * Nothing is copied wholesale: only the body's content type, the visitor
    * metadata Fingerly needs, and an idempotency key when the SDK sent one.
    *
-   * @throws {TypeError} If `clientIp` returns a value unusable as a header.
+   * @throws {ClientIpUnusable} If `clientIp` throws or returns anything but
+   *   one IPv4 or IPv6 address.
    */
   private async upstreamHeaders(
     request: Request,
     url: URL,
     apiKey: string,
+    peer: ProxyPeer,
   ): Promise<Headers> {
-    const clientIp = await this.clientIp(request);
-    if (!PLAIN_ADDRESS.test(clientIp))
-      throw new TypeError("clientIp must resolve to a plain address");
+    const clientIp = await resolveClientIp(this.clientIp, request, peer);
 
     const headers = new Headers({
       "content-type": request.headers.get("content-type") ?? "application/json",
@@ -321,6 +348,36 @@ function normalizePath(value: string): string {
   if (!path.startsWith("/") || path.length < 2 || /[?#]/.test(path))
     throw new TypeError("path must be an absolute URL path such as /k7x2qm4a");
   return path;
+}
+
+/** The client IP callback failed or returned something that is not one address. */
+class ClientIpUnusable extends Error {}
+
+/**
+ * Runs the customer's callback and accepts exactly one IP literal.
+ *
+ * Anything else (null from a missing header, "", "null", a comma list,
+ * garbage) is a configuration error: forwarding it would make every
+ * identification fail upstream, or attribute visitors to a made-up address.
+ */
+async function resolveClientIp(
+  callback: ProxyOptions["clientIp"],
+  request: Request,
+  peer: ProxyPeer,
+): Promise<string> {
+  let value: unknown;
+  try {
+    value = await callback(request, peer);
+  } catch {
+    throw new ClientIpUnusable("threw");
+  }
+  if (typeof value !== "string" || isIP(value) === 0)
+    throw new ClientIpUnusable(
+      typeof value === "string"
+        ? "returned something other than one IP address"
+        : `returned ${value === null ? "null" : typeof value}`,
+    );
+  return value.replace(MAPPED_IPV4, "$1");
 }
 
 /** An upstream answer larger than the proxy will hold in memory. */

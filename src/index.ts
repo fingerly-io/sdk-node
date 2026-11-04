@@ -19,5 +19,6 @@ export type {
   FingerlyOptions,
   ProxyFailure,
   ProxyOptions,
+  ProxyPeer,
   VerifyWebhookOptions,
 } from "./types.js";
