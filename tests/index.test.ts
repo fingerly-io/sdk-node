@@ -71,6 +71,30 @@ describe("verifyWebhook", () => {
   });
 });
 
+describe("verifyWebhook signature list", () => {
+  it("considers only the first 32 candidates", () => {
+    const payload = '{"ok":true}';
+    const timestamp = "1700000000";
+    const now = new Date(1700000000_000);
+    const good =
+      "sha256=" +
+      createHmac("sha256", "secret")
+        .update(timestamp + "." + payload)
+        .digest("hex");
+    const decoy = "sha256=" + "0".repeat(64);
+    const header = (before: number) =>
+      [...Array<string>(before).fill(decoy), good].join(",");
+    const verify = (signature: string) =>
+      verifyWebhook({ secret: "secret", payload, timestamp, signature, now });
+    expect(verify(header(31))).toBe(true);
+    expect(verify(header(32))).toBe(false);
+    const huge = Array<string>(200_000).fill(decoy).join(",");
+    const started = performance.now();
+    expect(verify(huge)).toBe(false);
+    expect(performance.now() - started).toBeLessThan(50);
+  });
+});
+
 describe("event client", () => {
   it("rejects unsupported keys before any network access", async () => {
     const fetchImpl = vi.fn<typeof fetch>();

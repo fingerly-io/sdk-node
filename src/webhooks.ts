@@ -11,12 +11,16 @@ const TIMESTAMP = /^\d+$/;
 
 const PREFIX_LENGTH = "sha256=".length;
 
+/** Signature candidates considered from one header. */
+const MAX_SIGNATURES = 32;
+
 /**
  * Verifies a webhook delivery against the raw request body.
  *
  * Pass the exact bytes received, before any JSON parsing: re-serialising them
  * changes the digest. During a signing-secret rotation Fingerly sends several
- * comma-separated signatures, and any one matching is accepted.
+ * comma-separated signatures, and any one of the first 32 matching is
+ * accepted.
  *
  * Verification proves the delivery came from Fingerly and is recent. It does
  * not deduplicate, so persist processed event ids as well.
@@ -33,7 +37,11 @@ export function verifyWebhook(options: VerifyWebhookOptions): boolean {
   if (!isFresh(timestamp, options.now ?? new Date(), tolerance)) return false;
 
   const expected = sign(secret, timestamp, payload);
-  return signature.split(",").some((candidate) => matches(candidate, expected));
+  // Rotation sends a handful; a header of thousands is not ours, and parsing
+  // it would let one request burn CPU. Only the first few are considered.
+  return signature
+    .split(",", MAX_SIGNATURES)
+    .some((candidate) => matches(candidate, expected));
 }
 
 /** Rejects replays: the signed time must be within tolerance of now. */
