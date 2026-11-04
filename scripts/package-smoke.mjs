@@ -52,6 +52,16 @@ try {
     ],
     { cwd: work, stdio: "inherit" },
   );
+  // The two builds are separate copies; errors must still match across them.
+  execFileSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `import { createRequire } from 'node:module'; import * as esm from '@fingerly/node'; const cjs = createRequire(process.cwd() + '/')('@fingerly/node'); if (cjs.FingerlyAPIError === esm.FingerlyAPIError) throw new Error('Expected two copies'); if (!(new cjs.FingerlyAPIError('x', 404) instanceof esm.FingerlyAPIError) || !(new esm.FingerlyTimeoutError() instanceof cjs.FingerlyConnectionError)) throw new Error('Errors do not match across ESM and CommonJS');`,
+    ],
+    { cwd: work, stdio: "inherit" },
+  );
   // Types must resolve for both module systems under every resolution mode a
   // customer may use; a CommonJS project once got the ESM declarations.
   const tsc = resolve("node_modules/typescript/bin/tsc");

@@ -1,4 +1,26 @@
 /**
+ * The ESM and CommonJS builds are separate copies, so an app that loads both
+ * (a bundler on one side, `require` on the other) has two of every class and
+ * a plain `instanceof` fails across them. Each error carries a registry-wide
+ * symbol brand instead, and `instanceof` checks that.
+ */
+function brand(instance: object, kind: string): void {
+  Object.defineProperty(instance, Symbol.for(`@fingerly/node:${kind}`), {
+    value: true,
+  });
+}
+
+/** True when `value` was branded `kind` by either copy of the SDK. */
+function branded(value: unknown, kind: string): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<symbol, unknown>)[Symbol.for(`@fingerly/node:${kind}`)] ===
+      true
+  );
+}
+
+/**
  * Raised when the Fingerly API cannot be reached, or the connection drops
  * before the whole response arrived. The runtime's own error is kept as
  * `cause` for debugging; the message names no host internals.
@@ -6,9 +28,14 @@
 export class FingerlyConnectionError extends Error {
   override readonly name: string = "FingerlyConnectionError";
 
+  static override [Symbol.hasInstance](value: unknown): boolean {
+    return branded(value, "FingerlyConnectionError");
+  }
+
   /** @param cause The runtime error behind the failure, if any. */
   constructor(cause?: unknown, message = "Could not reach the Fingerly API") {
     super(message);
+    brand(this, "FingerlyConnectionError");
     if (cause !== undefined)
       Object.defineProperty(this, "cause", {
         value: cause,
@@ -28,8 +55,13 @@ export class FingerlyConnectionError extends Error {
 export class FingerlyTimeoutError extends FingerlyConnectionError {
   override readonly name = "FingerlyTimeoutError";
 
+  static override [Symbol.hasInstance](value: unknown): boolean {
+    return branded(value, "FingerlyTimeoutError");
+  }
+
   constructor() {
     super(undefined, "Fingerly request timed out");
+    brand(this, "FingerlyTimeoutError");
   }
 }
 
@@ -56,6 +88,10 @@ export interface APIErrorMetadata {
  */
 export class FingerlyAPIError extends Error {
   override readonly name = "FingerlyAPIError";
+
+  static override [Symbol.hasInstance](value: unknown): boolean {
+    return branded(value, "FingerlyAPIError");
+  }
   readonly code?: string;
   readonly details?: unknown;
   readonly requestId?: string;
@@ -73,6 +109,7 @@ export class FingerlyAPIError extends Error {
     metadata: APIErrorMetadata = {},
   ) {
     super(message);
+    brand(this, "FingerlyAPIError");
     if (metadata.code !== undefined) this.code = metadata.code;
     if (metadata.details !== undefined) this.details = metadata.details;
     if (metadata.requestId !== undefined) this.requestId = metadata.requestId;
