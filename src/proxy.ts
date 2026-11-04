@@ -243,7 +243,7 @@ export class FingerlyProxy {
     if (error instanceof FingerlyTimeoutError) {
       this.report({
         kind: "timeout",
-        message: `upstream did not answer within ${this.timeoutMs} ms`,
+        message: `request did not complete within ${this.timeoutMs} ms`,
       });
       return refuse(504, "Gateway timeout");
     }

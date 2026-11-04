@@ -130,7 +130,8 @@ export interface ProxyPeer {
 /** A problem the proxy answered for instead of forwarding. */
 export interface ProxyFailure {
   /**
-   * `timeout`: the upstream did not answer within the deadline (504).
+   * `timeout`: the exchange (reading the visitor's body, the upstream call and
+   * its answer) did not finish within the deadline (504).
    * `upstream`: it was unreachable or answered unusably (502).
    * `misconfigured`: the key or client IP callback is unusable (500); these
    * are reported once per process.
