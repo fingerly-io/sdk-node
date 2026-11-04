@@ -37,16 +37,15 @@ export class APITransport {
    * Server-only read key, sent as `x-api-key` and redacted from errors. A
    * `#private` field, so inspecting or serialising the client never shows it.
    */
-  readonly #secretKey: string;
+  readonly #secretKey: string | undefined;
 
   /**
    * @param options Client options; all of them are validated here.
-   * @throws {TypeError} If the key, endpoint, version or timeout is invalid.
+   * @throws {TypeError} If the endpoint, version or timeout is invalid. The
+   *   key is checked on the first request, which rejects with a TypeError
+   *   before any network access when it is not a secret key.
    */
   constructor(options: FingerlyOptions) {
-    // Validate the key even when an endpoint is given, so a public, proxy or
-    // management key can never reach an API that would accept it.
-    parseKey(options.secretKey, "sk");
     const origin = normalizeOrigin(options.endpoint ?? DEFAULT_ENDPOINT);
     const apiVersion = normalizeApiVersion(options.apiVersion);
 
@@ -68,9 +67,17 @@ export class APITransport {
    * @throws {FingerlyTimeoutError} When the deadline elapses.
    */
   get<T>(path: string, signal?: AbortSignal): Promise<T> {
+    // Validated on use rather than at construction, so a build without
+    // secrets can load the module that creates the client. A public, proxy or
+    // management key still never reaches the network, whatever the endpoint.
+    try {
+      parseKey(this.#secretKey ?? "", "sk");
+    } catch (error) {
+      return Promise.reject(error);
+    }
     return withDeadline(this.timeoutMs, signal, async (bounded) => {
       const response = await this.fetchImpl(this.baseUrl + path, {
-        headers: { "x-api-key": this.#secretKey, accept: "application/json" },
+        headers: { "x-api-key": this.#secretKey!, accept: "application/json" },
         redirect: "manual",
         signal: bounded,
       });
@@ -119,6 +126,7 @@ export class APITransport {
 
   /** Strips the secret key from anything an error may carry to logs. */
   private redact(value: string): string {
-    return value.split(this.#secretKey).join("[redacted]");
+    const key = this.#secretKey;
+    return key ? value.split(key).join(REDACTED) : value;
   }
 }

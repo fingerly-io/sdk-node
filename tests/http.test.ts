@@ -157,10 +157,35 @@ describe("reading one event", () => {
 });
 
 describe("proxy boundary", () => {
-  it("refuses invalid proxy options and mismatched public credentials", async () => {
-    expect(() =>
-      createProxy({ proxyKey: key, clientIp: () => "127.0.0.1" }),
-    ).toThrow(TypeError);
+  it("loads without a key and answers 500 until one is configured", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetchImpl = vi.fn(async () => Response.json({}));
+    for (const proxyKey of [undefined, "", key, "fly_px_nope"]) {
+      // Module scope in a route file: must not throw during a build.
+      const proxy = createProxy({
+        proxyKey,
+        clientIp: () => "127.0.0.1",
+        fetchImpl,
+      });
+      for (let i = 0; i < 2; i++) {
+        const r = await proxy(
+          new Request("https://shop.test/k7x2qm4a", {
+            method: "POST",
+            headers: { "x-api-key": "fly_pk_development_test" },
+            body: "{}",
+          }),
+        );
+        expect(r.status).toBe(500);
+        expect(r.headers.get("content-type")).toMatch(/^text\/plain/);
+        expect(await r.text()).not.toMatch(/fingerly/i);
+      }
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+    // Once per process, not once per request.
+    expect(errors).toHaveBeenCalledTimes(1);
+    errors.mockRestore();
+  });
+  it("refuses mismatched public credentials", async () => {
     const fetchImpl = vi.fn(async () => Response.json({}));
     const proxy = createProxy({
       proxyKey: "fly_px_development_test",

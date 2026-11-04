@@ -45,8 +45,12 @@ export interface EventListOptions {
 
 /** Options for the `Fingerly` client. */
 export interface FingerlyOptions {
-  /** Server-only key: `fly_sk_{environment}_…`. Never ship it. */
-  secretKey: string;
+  /**
+   * Server-only key: `fly_sk_{environment}_…`. Never ship it. Checked on the
+   * first request, so `process.env.FINGERLY_SECRET_KEY` may be unset while a
+   * build loads the module.
+   */
+  secretKey: string | undefined;
   /** API route version. Defaults to v1; the server must support it. */
   apiVersion?: string;
   /** Overrides the Fingerly API origin, e.g. a local API. */
@@ -75,10 +79,14 @@ export interface VerifyWebhookOptions {
 
 /** Options for the same-origin proxy. */
 export interface ProxyOptions {
-  /** Write-only credential created for customer-owned proxy infrastructure. */
-  proxyKey?: string;
+  /**
+   * Write-only credential created for customer-owned proxy infrastructure.
+   * Checked on the first request, so it may be unset while a build loads the
+   * route module.
+   */
+  proxyKey?: string | undefined;
   /** @deprecated Use proxyKey. Secret read keys will be refused in the next major version. */
-  secretKey?: string;
+  secretKey?: string | undefined;
   /** API route version forwarded upstream. Defaults to v1. */
   apiVersion?: string;
   /** Overrides the upstream origin implied by the key. */

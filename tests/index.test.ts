@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createProxy, load, verifyWebhook } from "../src/index.js";
 
 describe("verifyWebhook", () => {
@@ -72,8 +72,11 @@ describe("verifyWebhook", () => {
 });
 
 describe("event client", () => {
-  it("rejects unsupported keys rather than falling back to the control API", () => {
+  it("rejects unsupported keys before any network access", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
     for (const secretKey of [
+      undefined,
+      "",
       "not-a-fingerly-key",
       "fly_pk_production_test",
       "fly_px_development_test",
@@ -81,10 +84,17 @@ describe("event client", () => {
       "fly_sk_unknown_test",
       "fly_sk_production_",
     ]) {
-      expect(() =>
-        load({ secretKey, endpoint: "https://custom.test" }),
-      ).toThrow(TypeError);
+      // Constructing never throws for the key, so a build without secrets can
+      // load the module; the first read refuses it instead.
+      const client = load({
+        secretKey,
+        endpoint: "https://custom.test",
+        fetchImpl,
+      });
+      await expect(client.events.list()).rejects.toThrow(TypeError);
+      await expect(client.events.get("id")).rejects.toThrow(TypeError);
     }
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("scopes reads through the secret key and encodes filters", async () => {

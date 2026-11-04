@@ -49,10 +49,12 @@ export class FingerlyProxy {
   /**
    * Server-held proxy key, or deprecated secret key, sent only to Fingerly. A
    * `#private` field, so inspecting or serialising the proxy never shows it.
+   * Validated on the first request, not here, so a build without secrets can
+   * still load the module that creates the proxy.
    */
-  readonly #key: string;
-  /** The key's environment, matched against the browser's key. */
-  private readonly scope: KeyScope;
+  readonly #key: string | undefined;
+  /** The validated key's environment, once a request has needed it. */
+  #scope: KeyScope | null = null;
   /** The one URL requests are forwarded to. */
   private readonly upstreamUrl: string;
   /** The one path answered, or null to answer wherever the framework routes. */
@@ -69,21 +71,20 @@ export class FingerlyProxy {
   private readonly usesProxyKey: boolean;
 
   /**
-   * @param options Proxy options; all of them are validated here.
-   * @throws {TypeError} If a credential, route, limit or callback is invalid.
+   * @param options Proxy options. Everything but the key is validated here;
+   *   the key is validated on the first request (see {@link handle}).
+   * @throws {TypeError} If a route, limit or callback is invalid, or both a
+   *   proxy key and the deprecated secret key are passed.
    */
   constructor(options: ProxyOptions) {
     const { proxyKey, secretKey } = options;
-    if (!proxyKey && !secretKey)
-      throw new TypeError("A Fingerly proxy key is required");
     if (proxyKey && secretKey)
       throw new TypeError("Pass proxyKey or deprecated secretKey, not both");
     if (typeof options.clientIp !== "function")
       throw new TypeError("clientIp is required");
 
-    this.usesProxyKey = Boolean(proxyKey);
-    this.#key = proxyKey ?? secretKey!;
-    this.scope = parseKey(this.#key, this.usesProxyKey ? "px" : "sk");
+    this.usesProxyKey = !secretKey;
+    this.#key = proxyKey || secretKey || undefined;
     this.upstreamUrl =
       normalizeOrigin(options.upstream ?? DEFAULT_ENDPOINT) +
       `/api/${normalizeApiVersion(options.apiVersion)}/ingest`;
@@ -117,7 +118,14 @@ export class FingerlyProxy {
     if (request.method !== "POST")
       return refuse(405, "Method Not Allowed", { allow: "POST" });
 
-    const apiKey = this.upstreamKeyFor(request.headers.get("x-api-key"));
+    const scope = this.validatedScope();
+    if (scope === null)
+      return refuse(
+        500,
+        "Proxy misconfigured: the proxy key is missing or invalid",
+      );
+
+    const apiKey = this.upstreamKeyFor(scope, request.headers.get("x-api-key"));
     if (apiKey === null) return refuse(401, "Unauthorized");
 
     // Refuse on the declared size first; readBody enforces the real one.
@@ -154,6 +162,29 @@ export class FingerlyProxy {
   }
 
   /**
+   * Validates the configured key once, on the first request that needs it.
+   *
+   * A missing or malformed key is a deployment mistake, not a visitor's: it
+   * is logged once per process and every request answers 500 without calling
+   * upstream.
+   *
+   * @returns The key's environment, or null when the key is unusable.
+   */
+  private validatedScope(): KeyScope | null {
+    if (this.#scope !== null) return this.#scope;
+    try {
+      this.#scope = parseKey(this.#key ?? "", this.usesProxyKey ? "px" : "sk");
+      return this.#scope;
+    } catch {
+      logOnce(
+        "proxy-key",
+        "Fingerly proxy misconfigured: the proxy key is missing or invalid; every proxied request answers 500",
+      );
+      return null;
+    }
+  }
+
+  /**
    * Decides which key to present upstream.
    *
    * With a proxy key the browser must supply a public key for the same
@@ -163,11 +194,14 @@ export class FingerlyProxy {
    * @param presented The browser's `x-api-key` header, if any.
    * @returns The key to forward, or null when the caller is unauthorised.
    */
-  private upstreamKeyFor(presented: string | null): string | null {
-    if (!this.usesProxyKey) return this.#key;
+  private upstreamKeyFor(
+    scope: KeyScope,
+    presented: string | null,
+  ): string | null {
+    if (!this.usesProxyKey) return this.#key!;
     try {
       const browser = parseKey(presented ?? "", "pk");
-      return browser.environment === this.scope.environment ? presented : null;
+      return browser.environment === scope.environment ? presented : null;
     } catch {
       return null;
     }
@@ -198,7 +232,7 @@ export class FingerlyProxy {
       "x-fingerly-user-agent": request.headers.get("user-agent") ?? "",
       "x-fingerly-proxy-version": PROXY_VERSION,
     });
-    if (this.usesProxyKey) headers.set("x-fingerly-proxy-key", this.#key);
+    if (this.usesProxyKey) headers.set("x-fingerly-proxy-key", this.#key!);
     const idempotencyKey = request.headers.get("idempotency-key");
     if (idempotencyKey) headers.set("idempotency-key", idempotencyKey);
     return headers;
@@ -226,13 +260,33 @@ function normalizePath(value: string): string {
   return path;
 }
 
+/** Problems already logged by this process; each is logged once. */
+const logged = new Set<string>();
+
+/**
+ * Logs a configuration problem once per process. It repeats on every request
+ * until the deployment is fixed, so one line is enough.
+ */
+function logOnce(problem: string, line: string): void {
+  if (logged.has(problem)) return;
+  logged.add(problem);
+  console.error(line);
+}
+
 /** Builds a plain-text refusal that never reaches Fingerly. */
 function refuse(
   status: number,
   message: string,
   headers: HeadersInit = {},
 ): Response {
-  return new Response(message, { status, headers });
+  return new Response(message, {
+    status,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+      ...headers,
+    },
+  });
 }
 
 /**
