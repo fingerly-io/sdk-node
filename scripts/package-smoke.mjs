@@ -109,7 +109,7 @@ export type Read = Event;
     readFileSync(resolve(work, "node_modules/@fingerly/node/package.json")),
   );
   if (
-    pkg.version !== "0.1.0" ||
+    pkg.version !== JSON.parse(readFileSync("package.json", "utf8")).version ||
     (pkg.dependencies && Object.keys(pkg.dependencies).length)
   )
     throw new Error("Unexpected package version or runtime dependencies");

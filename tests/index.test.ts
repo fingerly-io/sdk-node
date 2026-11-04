@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { createProxy, load, verifyWebhook } from "../src/index.js";
 
@@ -68,6 +69,37 @@ describe("verifyWebhook", () => {
         now,
       }),
     ).toBe(false);
+  });
+});
+
+describe("release metadata", () => {
+  it("reports the package version upstream and in the changelog", async () => {
+    const read = (name: string) =>
+      readFileSync(new URL(`../${name}`, import.meta.url), "utf8");
+    const { version } = JSON.parse(read("package.json")) as {
+      version: string;
+    };
+    let header: string | null = null;
+    const proxy = createProxy({
+      proxyKey: "fly_px_development_proxy",
+      clientIp: () => "203.0.113.10",
+      fetchImpl: async (_url, init) => {
+        header = new Headers(init?.headers).get("x-fingerly-proxy-version");
+        return Response.json({});
+      },
+    });
+    await proxy(
+      new Request("https://shop.test/k7x2qm4a", {
+        method: "POST",
+        headers: { "x-api-key": "fly_pk_development_public" },
+        body: "{}",
+      }),
+    );
+    expect(header).toBe(`node/${version}`);
+    expect(read("CHANGELOG.md")).toMatch(new RegExp(`^## ${version}$`, "m"));
+    expect(read("CHANGELOG.md").indexOf(`## ${version}`)).toBe(
+      read("CHANGELOG.md").indexOf("## "),
+    );
   });
 });
 
@@ -177,7 +209,7 @@ describe("same-origin proxy", () => {
     expect(response.status).toBe(200);
     expect(upstream?.url).toBe("https://api.fingerly.io/api/v1/ingest");
     expect(upstream?.headers.get("x-fingerly-proxy-version")).toBe(
-      "node/0.1.0",
+      "node/0.1.1",
     );
     expect(upstream?.headers.get("x-fingerly-client-ip")).toBe("203.0.113.10");
     expect(upstream?.headers.get("x-fingerly-origin")).toBe(
