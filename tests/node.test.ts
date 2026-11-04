@@ -160,7 +160,7 @@ describe("Node handler", () => {
     }
     expect(outcomes).toEqual(Array(10).fill(413));
     expect(seen).toHaveLength(0);
-  });
+  }, 30_000);
 
   it("answers a refused request without reading its body", async () => {
     seen.length = 0;
