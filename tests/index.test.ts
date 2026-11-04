@@ -159,9 +159,7 @@ describe("same-origin proxy", () => {
     // Nothing relayed may name Fingerly: a blocker can match a header name.
     const relayed: string[] = [];
     response.headers.forEach((_value, name) => relayed.push(name));
-    expect(relayed.join(" ")).not.toMatch(
-      /fingerly|set-cookie/,
-    );
+    expect(relayed.join(" ")).not.toMatch(/fingerly|set-cookie/);
 
     expect(
       (

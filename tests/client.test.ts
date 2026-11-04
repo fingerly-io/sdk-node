@@ -118,5 +118,4 @@ describe("API version configuration", () => {
       "https://api.fingerly.io/api/v2/ingest",
     ]);
   });
-
 });
