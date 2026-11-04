@@ -260,6 +260,35 @@ describe("proxy boundary", () => {
     expect(failures).toEqual(["timeout", "upstream"]);
   });
 
+  it("caps upstream bodies at 4 MiB and never relays a truncated one", async () => {
+    const MiB = 1_048_576;
+    const proxyFor = (body: () => BodyInit) =>
+      createProxy({
+        secretKey: key,
+        clientIp: () => "127.0.0.1",
+        fetchImpl: async () => new Response(body()),
+        onError: () => {},
+      });
+    const request = () =>
+      new Request("https://shop.test/k7x2qm4a", { method: "POST", body: "{}" });
+    const exact = await proxyFor(() => new Uint8Array(4 * MiB))(request());
+    expect(exact.status).toBe(200);
+    expect((await exact.arrayBuffer()).byteLength).toBe(4 * MiB);
+    const over = await proxyFor(() => new Uint8Array(4 * MiB + 1))(request());
+    expect(over.status).toBe(502);
+    // An upstream that dies mid-body must not reach the browser as a 200.
+    const truncated = await proxyFor(
+      () =>
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"request_id":'));
+            controller.error(new Error("socket reset"));
+          },
+        }),
+    )(request());
+    expect(truncated.status).toBe(502);
+  });
+
   it("logs one line per failure to the console without a hook", async () => {
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     const proxy = createProxy({

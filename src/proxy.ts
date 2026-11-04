@@ -6,6 +6,7 @@ import {
   positiveInt,
 } from "./config.js";
 import type { KeyScope } from "./config.js";
+import { MAX_RESPONSE_BYTES, readLimited } from "./body.js";
 import { withDeadline } from "./deadline.js";
 import { FingerlyTimeoutError } from "./errors.js";
 import { REDACTED, inspectCustom } from "./redact.js";
@@ -143,7 +144,11 @@ export class FingerlyProxy {
         this.timeoutMs,
         request.signal,
         async (signal) => {
-          const body = await readBody(request, this.maxBodyBytes, signal);
+          const body = await readLimited(
+            request.body,
+            this.maxBodyBytes,
+            signal,
+          );
           if (body === null) return refuse(413, "Payload Too Large");
           const response = await this.fetchImpl(this.upstreamUrl, {
             method: "POST",
@@ -152,7 +157,7 @@ export class FingerlyProxy {
             redirect: "manual",
             signal,
           });
-          return await relay(response);
+          return await relay(response, signal);
         },
       );
     } catch (error) {
@@ -318,6 +323,13 @@ function normalizePath(value: string): string {
   return path;
 }
 
+/** An upstream answer larger than the proxy will hold in memory. */
+class UpstreamResponseTooLarge extends Error {
+  constructor() {
+    super(`upstream response exceeded ${MAX_RESPONSE_BYTES} bytes`);
+  }
+}
+
 /** Configuration problems already reported by this process. */
 const reported = new Set<string>();
 
@@ -326,6 +338,7 @@ const reported = new Set<string>();
  * `fetch failed (ECONNREFUSED)` rather than the error object.
  */
 function describe(error: unknown): string {
+  if (error instanceof UpstreamResponseTooLarge) return error.message;
   if (!(error instanceof Error)) return "upstream request failed";
   const cause = (error as { cause?: { code?: unknown; message?: unknown } })
     .cause;
@@ -355,54 +368,22 @@ function refuse(
 }
 
 /**
- * Reads a request body without buffering more than the limit.
- *
- * Streaming the read means an oversized body is cut off at the limit instead
- * of being held in memory first.
- *
- * @returns The bytes, or null when the limit was exceeded.
- */
-async function readBody(
-  request: Request,
-  maxBytes: number,
-  signal: AbortSignal,
-): Promise<Buffer<ArrayBuffer> | null> {
-  const reader = request.body?.getReader();
-  if (!reader) return Buffer.alloc(0);
-
-  const cancel = () => {
-    void reader.cancel(signal.reason).catch(() => {});
-  };
-  signal.addEventListener("abort", cancel, { once: true });
-
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) return Buffer.concat(chunks);
-      size += value.byteLength;
-      if (size > maxBytes) {
-        await reader.cancel();
-        return null;
-      }
-      chunks.push(value);
-    }
-  } finally {
-    signal.removeEventListener("abort", cancel);
-    reader.releaseLock();
-  }
-}
-
-/**
  * Returns the upstream response to the browser, with only the allowlisted
  * headers.
  *
- * The body is always drained, inside the caller's deadline, so a stalled
- * upstream times out instead of holding a connection open.
+ * The whole body is read before anything is answered, inside the caller's
+ * deadline and under {@link MAX_RESPONSE_BYTES}: a stalled upstream times out
+ * instead of holding a connection open, and a cut-off or oversized one is a
+ * 502 rather than a truncated success.
+ *
+ * @throws {UpstreamResponseTooLarge} Past the response cap.
  */
-async function relay(response: Response): Promise<Response> {
-  const bytes = await response.arrayBuffer();
+async function relay(
+  response: Response,
+  signal: AbortSignal,
+): Promise<Response> {
+  const bytes = await readLimited(response.body, MAX_RESPONSE_BYTES, signal);
+  if (bytes === null) throw new UpstreamResponseTooLarge();
   const headers = new Headers({ "cache-control": "no-store" });
   for (const name of RELAYED_HEADERS) {
     const value = response.headers.get(name);
