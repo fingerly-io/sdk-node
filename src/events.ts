@@ -15,9 +15,10 @@ export class EventsClient {
    *
    * @param requestId The `request_id` returned by identification.
    * @param signal Caller cancellation.
-   * @throws {FingerlyAPIError} `404 event_not_found` if it is not stored yet;
-   *   an event is readable as soon as identification answers, so this is a
-   *   request id that was never issued rather than one that has not landed.
+   * @throws {FingerlyAPIError} `404 event_pending` (`isPending`, with
+   *   `retryAfter`) if the request id was accepted but the event is not
+   *   recorded yet; `404 event_not_found` if it was never issued or is past
+   *   retention. Neither is retried automatically.
    */
   get(requestId: string, signal?: AbortSignal): Promise<Event> {
     return this.transport.get<Event>(

@@ -93,6 +93,8 @@ export interface paths {
          * @description Submits the signal report a client SDK collected and answers with the complete verdict: the request ID, the visitor ID and its confidence, and the suspect score, level and triggers. There is no second call to make.
          *
          *     The client SDKs build and send this request. `signals` is produced by them and is not a public contract. Send an `Idempotency-Key` header, and the same value on every retry, so a retried identification is answered and charged once.
+         *
+         *     The `X-Request-Id` response header names this HTTP exchange, for support and logs. It is not the `request_id` in the body, which names the identification and is what `GET /events/{request_id}` reads.
          */
         post: operations["identifyVisitor"];
         delete?: never;
@@ -111,12 +113,14 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Submit from the browser SDK
-         * @description The one URL the browser SDK and every first-party proxy post to. A body with a `token` is a deferred report and is answered `202` with `request_id` and `duplicate`, exactly as the deferred report route answers. Any other body is an identification and is answered `200` with the complete verdict, exactly as the identify route answers.
+         * Submit from a client SDK
+         * @description The one URL the client SDKs and every first-party proxy post to. A body with a `token` is a deferred report and is answered `202` with `request_id` and `duplicate`, exactly as the deferred report route answers. Any other body is an identification and is answered `200` with the complete verdict, exactly as the identify route answers.
          *
          *     It exists so a proxy can forward everything it receives to a single path, and so the SDK can post both calls to one path of the customer's choosing, with nothing appended that a content blocker could match across sites.
+         *
+         *     The `X-Request-Id` response header names this HTTP exchange, for support and logs. It is not the `request_id` in the body, which names the identification and is what `GET /events/{request_id}` reads.
          */
-        post: operations["submitFromBrowserSdk"];
+        post: operations["submitFromClientSdk"];
         delete?: never;
         options?: never;
         head?: never;
@@ -408,6 +412,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/management/organizations/{organization_id}/visitor-erasures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List visitor erasures
+         * @description The last hundred erasures, newest first, each pending or done.
+         */
+        get: operations["listVisitorErasures"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/management/organizations/{organization_id}/visitors/{visitor_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Erase a visitor
+         * @description Erases everything this platform holds about one visitor. The identity goes at once, with the webhook events that name the visitor, so a device that comes back is a new visitor from that moment. The stored identifications, their deferred reports and the archived submissions follow within the hour, and the erasure's status turns from `pending` to `done`.
+         *
+         *     Asking again while one is pending returns that one. An identifier this organization never saw is accepted and erases nothing. Counts already folded into the dashboards are kept: they hold no identifier. Backups age out on their own thirty-day schedule.
+         */
+        delete: operations["eraseVisitor"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/management/organizations/{organization_id}/webhook-deliveries": {
         parameters: {
             query?: never;
@@ -633,12 +679,12 @@ export interface components {
             target?: string;
         };
         IdentifyIn: {
-            /** @description The SDK's consent state; must be granted */
+            /** @description The SDK's consent state; must be granted, or the request is refused with consent_required */
             consent?: string;
             /** @description Which SDK collected these signals */
-            sdk: components["schemas"]["SDKInfo"];
+            sdk?: components["schemas"]["SDKInfo"];
             /** @description The platform-specific signals the SDK collected */
-            signals: {
+            signals?: {
                 [key: string]: unknown;
             };
             /** @description An opaque value echoed back on the event */
@@ -684,12 +730,12 @@ export interface components {
             weight: number;
         };
         IngestIn: {
-            /** @description The SDK's consent state; must be granted */
+            /** @description The SDK's consent state; must be granted, or the request is refused with consent_required */
             consent?: string;
             /** @description Which SDK collected these signals */
-            sdk: components["schemas"]["SDKInfo"];
+            sdk?: components["schemas"]["SDKInfo"];
             /** @description The platform-specific signals the SDK collected */
-            signals: {
+            signals?: {
                 [key: string]: unknown;
             };
             /** @description An opaque value echoed back on the event. Identify only */
@@ -868,6 +914,7 @@ export interface components {
         };
         SignalGroupOut: {
             description: string;
+            inactive_on?: string[];
             key: string;
             label: string;
             platforms: string[];
@@ -877,6 +924,7 @@ export interface components {
             };
         };
         SignalMemberOut: {
+            inactive_on?: string[];
             signal: string;
             weights: {
                 [key: string]: number;
@@ -886,6 +934,25 @@ export interface components {
             /** @description The identical supplement was accepted before */
             duplicate?: boolean;
             request_id: string;
+        };
+        VisitorErasureOut: {
+            /**
+             * Format: date-time
+             * @description When everything else was removed
+             */
+            completed_at?: string | null;
+            id: string;
+            /**
+             * Format: date-time
+             * @description When it was asked for, and when the identity itself was removed
+             */
+            requested_at: string;
+            /** @description pending while the stored identifications and archived submissions are being removed, then done */
+            status: string;
+            visitor_id: string;
+        };
+        VisitorErasuresOut: {
+            erasures: components["schemas"]["VisitorErasureOut"][];
         };
         WebhookDeliveriesOut: {
             deliveries: components["schemas"]["WebhookDeliveryOut"][];
@@ -1089,7 +1156,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description No event with that request ID in this key's environment, or it is older than 30 days */
+            /** @description `event_not_found`: no event with that request ID in this key's environment, or it is older than 30 days. `event_pending`: the identification was accepted and is still being recorded; retry after the `Retry-After` seconds */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -1130,16 +1197,16 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description The SDK's consent state; must be granted */
+                    /** @description The SDK's consent state; must be granted, or the request is refused with consent_required */
                     consent?: string;
                     /** @description Which SDK collected these signals */
-                    sdk: components["schemas"]["SDKInfo"];
+                    sdk?: components["schemas"]["SDKInfo"];
                     /** @description A report containing only the deferred tier */
-                    signals: {
+                    signals?: {
                         [key: string]: unknown;
                     };
                     /** @description The deferred_token returned by identify */
-                    token: string;
+                    token?: string;
                 };
             };
         };
@@ -1296,7 +1363,7 @@ export interface operations {
             };
         };
     };
-    submitFromBrowserSdk: {
+    submitFromClientSdk: {
         parameters: {
             query?: never;
             header?: never;
@@ -1528,7 +1595,7 @@ export interface operations {
             content: {
                 "application/json": {
                     /** @description A subdomain of your site, such as k7.shop.example, that you will CNAME to target */
-                    hostname: string;
+                    hostname?: string;
                     /** @description Where the browser SDK posts on it. Omit it for a random one */
                     path?: string;
                 };
@@ -1814,10 +1881,10 @@ export interface operations {
             content: {
                 "application/json": {
                     /** @description production, staging or development */
-                    environment: string;
+                    environment?: string;
                     /** @description cloudflare_worker, server_sdk or custom. Defaults to custom */
                     kind?: string;
-                    name: string;
+                    name?: string;
                     /** @description Where the browser SDK posts on your site, such as /k7x2qm4a. Omit it for a random one */
                     path?: string;
                 };
@@ -1894,8 +1961,8 @@ export interface operations {
             content: {
                 "application/json": {
                     /** @description cloudflare_worker, server_sdk or custom */
-                    kind: string;
-                    name: string;
+                    kind?: string;
+                    name?: string;
                     /** @description Where the browser SDK posts on your site. Omit it for a new random one */
                     path?: string;
                 };
@@ -2355,13 +2422,13 @@ export interface operations {
                 "application/json": {
                     allowed_origins?: string[];
                     /** @description production, staging or development */
-                    environment: string;
+                    environment?: string;
                     /** Format: date-time */
                     expires_at?: string | null;
                     /** @description public or secret */
-                    kind: string;
+                    kind?: string;
                     /** @description What the key is called. The only part a person can recognise once the secret is masked */
-                    name: string;
+                    name?: string;
                 };
             };
         };
@@ -2441,7 +2508,7 @@ export interface operations {
             content: {
                 "application/json": {
                     /** @description Scheme and host, no path. Empty refuses everything */
-                    allowed_origins: string[];
+                    allowed_origins?: string[];
                 };
             };
         };
@@ -2839,6 +2906,144 @@ export interface operations {
             };
         };
     };
+    listVisitorErasures: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization */
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisitorErasuresOut"];
+                };
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Only an admin key may erase a visitor */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such resource in the key's organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request could not be validated. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    eraseVisitor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization the visitor belongs to */
+                organization_id: string;
+                /** @description The visitor to erase, as identifications report it */
+                visitor_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisitorErasureOut"];
+                };
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Only an admin key may erase a visitor */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such resource in the key's organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not a visitor identifier */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     listWebhookDeliveryAttempts: {
         parameters: {
             query?: {
@@ -2989,10 +3194,10 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    description: string;
-                    environment: string;
-                    events: string[];
-                    url: string;
+                    description?: string;
+                    environment?: string;
+                    events?: string[];
+                    url?: string;
                 };
             };
         };
@@ -3210,7 +3415,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    event_id: string;
+                    event_id?: string;
                 };
             };
         };

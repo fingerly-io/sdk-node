@@ -26,9 +26,16 @@ makes that request reject with a `TypeError` before any network access.
 Requests go to `https://api.fingerly.io`; `endpoint` overrides that for a local
 API, and `apiVersion` selects a route version (`v1` by default).
 
-An event is readable as soon as identification answers, so reading one right
-after identifying a visitor needs nothing special. `404 event_not_found` means
-a request id that was never issued. `suspect_score: null` means unscored and
+A 404 from `get` carries one of two codes:
+
+- `event_pending` (`error.isPending` is `true`): the request id was accepted
+  but its event is not recorded yet. It is not a verdict. Try again after
+  `error.retryAfter` seconds, or verify asynchronously, for example
+  from a webhook.
+- `event_not_found`: the request id was never issued for this key's
+  environment, or the event is past the 30-day retention.
+
+`suspect_score: null` means unscored and
 must not be treated as zero. The archived `document` arrives moments after the
 event: check `has_document` rather than assuming.
 
@@ -53,7 +60,9 @@ import { FingerlyAPIError, FingerlyConnectionError } from "@fingerly/node";
 try {
   await fingerly.events.get(requestId);
 } catch (error) {
-  if (error instanceof FingerlyAPIError && error.status === 429)
+  if (error instanceof FingerlyAPIError && error.isPending)
+    console.log(`not recorded yet, retry in ${error.retryAfter ?? 2} s`);
+  else if (error instanceof FingerlyAPIError && error.status === 429)
     console.log(`retry in ${error.retryAfter ?? 1} s`);
   else if (error instanceof FingerlyConnectionError) console.log("unreachable");
   else throw error;
@@ -67,6 +76,9 @@ that it is recent, that its environment is correct, and that it was scored.
 Apply your own policy to the server's verdict. Do not authorize an action using
 scores or visitor identifiers supplied by the browser. Tags correlate events;
 they do not replace your application's authentication or replay protection.
+An `event_pending` error means the server has not decided yet: retry after
+`retryAfter` seconds or verify asynchronously, and do not refuse the action as
+fraud on that answer alone.
 
 ## Webhooks
 

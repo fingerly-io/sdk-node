@@ -122,12 +122,40 @@ describe("reading one event", () => {
     }
   });
   it("surfaces a missing event rather than waiting for one", async () => {
-    // An event is readable as soon as identification answers, so this is a
-    // request id that was never issued - there is nothing to wait for.
+    // event_not_found is a request id that was never issued or is past
+    // retention: there is nothing to wait for.
     const fetchImpl = vi.fn(async () => missing());
     await expect(
       load({ secretKey: key, fetchImpl }).events.get("id"),
-    ).rejects.toMatchObject({ status: 404, code: "event_not_found" });
+    ).rejects.toMatchObject({
+      status: 404,
+      code: "event_not_found",
+      isPending: false,
+      retryAfter: null,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+  it("tells a pending event apart from a missing one and does not wait", async () => {
+    const fetchImpl = vi.fn(async () =>
+      Response.json(
+        {
+          error: { code: "event_pending", message: "Pending", status: 404 },
+          request_id: "trace",
+        },
+        { status: 404, headers: { "retry-after": "2" } },
+      ),
+    );
+    const error = (await load({ secretKey: key, fetchImpl })
+      .events.get("id")
+      .catch((e: unknown) => e)) as FingerlyAPIError;
+    expect(error).toBeInstanceOf(FingerlyAPIError);
+    expect(error).toMatchObject({
+      status: 404,
+      code: "event_pending",
+      isPending: true,
+      retryAfter: 2,
+      requestId: "trace",
+    });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
   it("wraps a transport failure in a connection error", async () => {

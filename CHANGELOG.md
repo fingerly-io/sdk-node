@@ -31,6 +31,11 @@ Fixes from testing the SDK inside real Next.js, Express and NestJS apps.
   `response_too_large` and is never quoted; network failures are the new
   `FingerlyConnectionError` (`FingerlyTimeoutError` extends it).
 - Webhook verification considers at most 32 signatures from one header.
+- `events.get` tells a pending event apart: `404 event_pending` (the request id
+  was accepted, the event is not recorded yet; `Retry-After` is set) has the new
+  `FingerlyAPIError#isPending`, while `event_not_found` still means never issued
+  or past retention. Neither is retried. The README no longer says an event is
+  readable as soon as identification answers.
 - SDK errors match with `instanceof` across the ESM and CommonJS builds.
 - The proxy reports itself upstream as `node/0.1.1`.
 

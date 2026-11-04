@@ -115,4 +115,13 @@ export class FingerlyAPIError extends Error {
     if (metadata.requestId !== undefined) this.requestId = metadata.requestId;
     this.retryAfter = metadata.retryAfter ?? null;
   }
+
+  /**
+   * True for `404 event_pending`: the request id was accepted but its event is
+   * not recorded yet. Not a verdict; try again after `retryAfter` seconds.
+   * `event_not_found` (never issued, or past retention) is not pending.
+   */
+  get isPending(): boolean {
+    return this.code === "event_pending";
+  }
 }
