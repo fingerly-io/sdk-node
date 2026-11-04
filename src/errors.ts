@@ -1,14 +1,35 @@
 /**
+ * Raised when the Fingerly API cannot be reached, or the connection drops
+ * before the whole response arrived. The runtime's own error is kept as
+ * `cause` for debugging; the message names no host internals.
+ */
+export class FingerlyConnectionError extends Error {
+  override readonly name: string = "FingerlyConnectionError";
+
+  /** @param cause The runtime error behind the failure, if any. */
+  constructor(cause?: unknown, message = "Could not reach the Fingerly API") {
+    super(message);
+    if (cause !== undefined)
+      Object.defineProperty(this, "cause", {
+        value: cause,
+        configurable: true,
+        writable: true,
+      });
+  }
+}
+
+/**
  * Raised when an SDK deadline elapses.
  *
  * Deadlines cover the whole operation, including reading the response body, so
- * a stalled stream times out like a stalled connection.
+ * a stalled stream times out like a stalled connection. A kind of
+ * {@link FingerlyConnectionError}.
  */
-export class FingerlyTimeoutError extends Error {
+export class FingerlyTimeoutError extends FingerlyConnectionError {
   override readonly name = "FingerlyTimeoutError";
 
   constructor() {
-    super("Fingerly request timed out");
+    super(undefined, "Fingerly request timed out");
   }
 }
 
@@ -20,6 +41,11 @@ export interface APIErrorMetadata {
   details?: unknown;
   /** Server-side trace id to quote in support requests. */
   requestId?: string;
+  /**
+   * Seconds to wait before trying again, from `Retry-After`; null when the
+   * response did not say. Reads are never retried automatically.
+   */
+  retryAfter?: number | null;
 }
 
 /**
@@ -33,6 +59,8 @@ export class FingerlyAPIError extends Error {
   readonly code?: string;
   readonly details?: unknown;
   readonly requestId?: string;
+  /** Seconds to wait before retrying, from `Retry-After`, or null. */
+  readonly retryAfter: number | null;
 
   /**
    * @param message Human-readable summary.
@@ -48,5 +76,6 @@ export class FingerlyAPIError extends Error {
     if (metadata.code !== undefined) this.code = metadata.code;
     if (metadata.details !== undefined) this.details = metadata.details;
     if (metadata.requestId !== undefined) this.requestId = metadata.requestId;
+    this.retryAfter = metadata.retryAfter ?? null;
   }
 }

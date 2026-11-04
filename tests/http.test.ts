@@ -3,9 +3,11 @@ import {
   load,
   createProxy,
   FingerlyAPIError,
+  FingerlyConnectionError,
   FingerlyTimeoutError,
   verifyWebhook,
 } from "../src/index.js";
+import { parseRetryAfter } from "../src/transport.js";
 const key = "fly_sk_development_test";
 const missing = () =>
   Response.json(
@@ -128,15 +130,91 @@ describe("reading one event", () => {
     ).rejects.toMatchObject({ status: 404, code: "event_not_found" });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
-  it("propagates a transport failure unchanged", async () => {
+  it("wraps a transport failure in a connection error", async () => {
     const error = new Error("offline");
     const fetchImpl = vi.fn(async () => {
       throw error;
     });
+    const read = load({ secretKey: key, fetchImpl }).events.get("id");
+    await expect(read).rejects.toBeInstanceOf(FingerlyConnectionError);
+    await expect(read).rejects.toMatchObject({
+      message: "Could not reach the Fingerly API",
+      cause: error,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+  it("wraps a body cut off mid-stream in a connection error", async () => {
+    const fetchImpl = async () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"request_id":'));
+            controller.error(new Error("socket reset"));
+          },
+        }),
+      );
     await expect(
       load({ secretKey: key, fetchImpl }).events.get("id"),
-    ).rejects.toBe(error);
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    ).rejects.toBeInstanceOf(FingerlyConnectionError);
+  });
+  it("reports redirects, rate limits and unusable bodies as API errors", async () => {
+    const respond = (response: Response) =>
+      load({ secretKey: key, fetchImpl: async () => response }).events.get(
+        "id",
+      );
+    await expect(
+      respond(
+        new Response(null, {
+          status: 302,
+          headers: { location: "https://elsewhere.test/" },
+        }),
+      ),
+    ).rejects.toMatchObject({ status: 302, retryAfter: null });
+    await expect(
+      respond(
+        Response.json(
+          { error: { code: "rate_limited" }, request_id: "trace" },
+          { status: 429, headers: { "retry-after": "7" } },
+        ),
+      ),
+    ).rejects.toMatchObject({
+      status: 429,
+      code: "rate_limited",
+      requestId: "trace",
+      retryAfter: 7,
+    });
+    const later = new Date(Date.now() + 30_000).toUTCString();
+    const dated = (await respond(
+      new Response("", {
+        status: 503,
+        headers: { "retry-after": later, "x-request-id": "from-header" },
+      }),
+    ).catch((e: unknown) => e)) as FingerlyAPIError;
+    expect(dated.requestId).toBe("from-header");
+    expect(dated.retryAfter).toBeGreaterThanOrEqual(29);
+    expect(dated.retryAfter).toBeLessThanOrEqual(30);
+    // Neither a non-JSON success nor an oversized one is quoted or parsed.
+    const garbled = await respond(
+      new Response(`not json ${key}`, { status: 200 }),
+    ).catch((e: Error) => e);
+    expect(garbled).toBeInstanceOf(FingerlyAPIError);
+    expect(garbled).toMatchObject({ status: 200, code: "invalid_response" });
+    expect(String(garbled) + JSON.stringify(garbled)).not.toMatch(
+      /not json|fly_sk/,
+    );
+    await expect(
+      respond(new Response(new Uint8Array(4 * 1_048_576 + 1))),
+    ).rejects.toMatchObject({ status: 200, code: "response_too_large" });
+  });
+  it("parses both forms of Retry-After", () => {
+    const now = Date.parse("2026-11-04T12:00:00Z");
+    expect(parseRetryAfter(null, now)).toBeNull();
+    expect(parseRetryAfter("0", now)).toBe(0);
+    expect(parseRetryAfter(" 120 ", now)).toBe(120);
+    expect(parseRetryAfter("Wed, 04 Nov 2026 12:00:10 GMT", now)).toBe(10);
+    expect(parseRetryAfter("Wed, 04 Nov 2026 11:00:00 GMT", now)).toBe(0);
+    expect(parseRetryAfter("-5", now)).toBeNull();
+    expect(parseRetryAfter("soon", now)).toBeNull();
   });
   it("cancels immediately and cleans up its cancellation listeners", async () => {
     const controller = new AbortController();
