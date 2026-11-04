@@ -149,10 +149,16 @@ describe("Node handler", () => {
 
   it("answers 413 to an oversized chunked upload rather than resetting", async () => {
     seen.length = 0;
-    const r = await post("/k7x2qm4a", Buffer.alloc(8 * 1_048_576, 0x20), {
-      chunked: true,
-    });
-    expect(r.status).toBe(413);
+    // Answering mid-upload used to race Node closing the socket: some
+    // visitors saw EPIPE or ECONNRESET instead of the 413.
+    const outcomes: (number | string | undefined)[] = [];
+    for (const mib of [2, 4, 8, 2, 4, 8, 2, 4, 8, 16]) {
+      const r = await post("/k7x2qm4a", Buffer.alloc(mib * 1_048_576, 0x20), {
+        chunked: true,
+      });
+      outcomes.push(r.status ?? r.error);
+    }
+    expect(outcomes).toEqual(Array(10).fill(413));
     expect(seen).toHaveLength(0);
   });
 

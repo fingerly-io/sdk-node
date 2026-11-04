@@ -6,8 +6,12 @@ import type {
   ProxyPeer,
 } from "./types.js";
 
-/** How long a refused upload may keep its connection while it drains. */
-const DRAIN_GRACE_MS = 5_000;
+/**
+ * How long a refused upload may keep arriving before the answer is written.
+ * Answering mid-upload lets Node close the socket under the visitor, who then
+ * sees a reset instead of the 413; draining first makes the answer arrive.
+ */
+const DRAIN_GRACE_MS = 2_000;
 
 /** What the Node adapter needs from the proxy it serves. */
 export interface NodeTarget {
@@ -92,8 +96,9 @@ export async function serveNode(
   const response = await target.forward(request, {
     remoteAddress: req.socket?.remoteAddress,
   });
-  // A refused upload may still be arriving. It is discarded as it comes (see
-  // streamOf) so the visitor reads the answer instead of a reset connection.
+  // A refused upload may still be arriving: discard the rest first, so the
+  // visitor reads the answer instead of a reset connection.
+  if (!(await drained(req))) res.setHeader("connection", "close");
   await write(res, response);
 }
 
@@ -154,17 +159,35 @@ function streamOf(req: IncomingMessage): ReadableStream<Uint8Array> {
         req.resume();
       },
       cancel() {
+        // Stop reading; serveNode discards the rest before answering.
         detach();
-        // Discard the rest so the answer can be delivered, but do not let a
-        // client that keeps sending hold the connection.
-        req.resume();
-        const timer = setTimeout(() => req.destroy(), DRAIN_GRACE_MS);
-        timer.unref?.();
-        req.once("end", () => clearTimeout(timer));
       },
     },
     { highWaterMark: 0 },
   );
+}
+
+/**
+ * Discards whatever of the request is still arriving, for at most
+ * {@link DRAIN_GRACE_MS}.
+ *
+ * @returns True when the request ended; false when it was still arriving.
+ */
+function drained(req: IncomingMessage): Promise<boolean> {
+  if (req.readableEnded || req.destroyed) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const done = (ended: boolean) => {
+      clearTimeout(timer);
+      req.off("end", onEnd);
+      req.off("close", onEnd);
+      resolve(ended);
+    };
+    const onEnd = () => done(true);
+    const timer = setTimeout(() => done(false), DRAIN_GRACE_MS);
+    req.once("end", onEnd);
+    req.once("close", onEnd);
+    req.resume();
+  });
 }
 
 /** Copies Node's header object into Fetch headers. */
