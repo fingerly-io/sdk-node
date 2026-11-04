@@ -17,6 +17,7 @@ export type {
   EventPage,
   EventListOptions,
   FingerlyOptions,
+  ProxyFailure,
   ProxyOptions,
   VerifyWebhookOptions,
 } from "./types.js";

@@ -209,21 +209,75 @@ describe("proxy boundary", () => {
     }
     expect(fetchImpl).not.toHaveBeenCalled();
   });
-  it("bounds upstream body receipt and propagates external cancellation", async () => {
+  it("answers upstream trouble as a gateway instead of throwing", async () => {
+    const failures: string[] = [];
+    const request = (init: RequestInit = {}) =>
+      new Request("https://shop.test/k7x2qm4a", {
+        method: "POST",
+        body: "{}",
+        ...init,
+      });
+    const proxyWith = (fetchImpl: typeof fetch) =>
+      createProxy({
+        secretKey: key,
+        timeoutMs: 20,
+        clientIp: () => "127.0.0.1",
+        fetchImpl,
+        onError: (failure) => failures.push(failure.kind),
+      });
+    // A body that never finishes still meets the deadline.
+    const stalled = await proxyWith(
+      async () => new Response(new ReadableStream({ start() {} })),
+    )(request());
+    expect(stalled.status).toBe(504);
+    expect(await stalled.text()).toBe("Gateway timeout");
+    const refused = await proxyWith(async () => {
+      throw Object.assign(new TypeError("fetch failed"), {
+        cause: Object.assign(new Error("connect"), { code: "ECONNREFUSED" }),
+      });
+    })(request());
+    expect(refused.status).toBe(502);
+    expect(await refused.text()).toBe("Bad gateway");
+    for (const response of [stalled, refused]) {
+      expect(response.headers.get("content-type")).toMatch(/^text\/plain/);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    }
+    expect(failures).toEqual(["timeout", "upstream"]);
+
+    // The visitor leaving cancels the upstream call and is not a failure.
+    const visitor = new AbortController();
+    let upstreamSignal: AbortSignal | undefined;
+    const pending = proxyWith(
+      (_url, init) =>
+        new Promise<Response>(() => {
+          upstreamSignal = init?.signal ?? undefined;
+        }),
+    )(request({ signal: visitor.signal }));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    visitor.abort();
+    expect((await pending).status).toBe(499);
+    expect(upstreamSignal?.aborted).toBe(true);
+    expect(failures).toEqual(["timeout", "upstream"]);
+  });
+
+  it("logs one line per failure to the console without a hook", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     const proxy = createProxy({
       secretKey: key,
-      timeoutMs: 20,
       clientIp: () => "127.0.0.1",
-      fetchImpl: async () => new Response(new ReadableStream({ start() {} })),
+      fetchImpl: async () => {
+        throw new TypeError("fetch failed");
+      },
     });
-    await expect(
-      proxy(
-        new Request("https://shop.test/k7x2qm4a", {
-          method: "POST",
-          body: "{}",
-        }),
-      ),
-    ).rejects.toBeInstanceOf(FingerlyTimeoutError);
+    const r = await proxy(
+      new Request("https://shop.test/k7x2qm4a", { method: "POST", body: "{}" }),
+    );
+    expect(r.status).toBe(502);
+    expect(errors).toHaveBeenCalledTimes(1);
+    expect(errors.mock.calls[0]).toHaveLength(1);
+    expect(String(errors.mock.calls[0]?.[0])).not.toContain("\n");
+    expect(String(errors.mock.calls[0]?.[0])).not.toContain(key);
+    errors.mockRestore();
   });
 });
 

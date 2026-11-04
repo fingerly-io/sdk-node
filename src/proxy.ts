@@ -7,8 +7,9 @@ import {
 } from "./config.js";
 import type { KeyScope } from "./config.js";
 import { withDeadline } from "./deadline.js";
+import { FingerlyTimeoutError } from "./errors.js";
 import { REDACTED, inspectCustom } from "./redact.js";
-import type { ProxyOptions } from "./types.js";
+import type { ProxyFailure, ProxyOptions } from "./types.js";
 
 const DEFAULT_MAX_BODY_BYTES = 1_048_576;
 const DEFAULT_TIMEOUT_MS = 5_000;
@@ -69,6 +70,8 @@ export class FingerlyProxy {
   private readonly clientIp: ProxyOptions["clientIp"];
   /** Proxy keys authenticate the browser's public key; secret keys do not. */
   private readonly usesProxyKey: boolean;
+  /** Where failures are reported; the console when absent. */
+  private readonly onError: ProxyOptions["onError"];
 
   /**
    * @param options Proxy options. Everything but the key is validated here;
@@ -98,6 +101,9 @@ export class FingerlyProxy {
       "timeoutMs",
     );
     this.clientIp = options.clientIp;
+    if (options.onError !== undefined && typeof options.onError !== "function")
+      throw new TypeError("onError must be a function");
+    this.onError = options.onError;
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
   }
 
@@ -132,19 +138,70 @@ export class FingerlyProxy {
     if (Number(request.headers.get("content-length")) > this.maxBodyBytes)
       return refuse(413, "Payload Too Large");
 
-    return withDeadline(this.timeoutMs, request.signal, async (signal) => {
-      const body = await readBody(request, this.maxBodyBytes, signal);
-      if (body === null) return refuse(413, "Payload Too Large");
-      const response = await this.fetchImpl(this.upstreamUrl, {
-        method: "POST",
-        headers: await this.upstreamHeaders(request, url, apiKey),
-        body,
-        redirect: "manual",
-        signal,
-      });
-      return relay(response);
-    });
+    try {
+      return await withDeadline(
+        this.timeoutMs,
+        request.signal,
+        async (signal) => {
+          const body = await readBody(request, this.maxBodyBytes, signal);
+          if (body === null) return refuse(413, "Payload Too Large");
+          const response = await this.fetchImpl(this.upstreamUrl, {
+            method: "POST",
+            headers: await this.upstreamHeaders(request, url, apiKey),
+            body,
+            redirect: "manual",
+            signal,
+          });
+          return await relay(response);
+        },
+      );
+    } catch (error) {
+      return this.gatewayFailure(request, error);
+    }
   };
+
+  /**
+   * Answers an upstream problem the way a gateway does, never by throwing:
+   * a framework turns a thrown error into a 500 and a stack trace per request.
+   *
+   * The visitor having gone is not a failure: the upstream call was cancelled
+   * with it and there is nobody to answer, so nothing is logged.
+   */
+  private gatewayFailure(request: Request, error: unknown): Response {
+    if (request.signal.aborted) return refuse(499, "Client Closed Request");
+    if (error instanceof FingerlyTimeoutError) {
+      this.report({
+        kind: "timeout",
+        message: `upstream did not answer within ${this.timeoutMs} ms`,
+      });
+      return refuse(504, "Gateway timeout");
+    }
+    this.report({ kind: "upstream", message: describe(error) });
+    return refuse(502, "Bad gateway");
+  }
+
+  /** One concise line per failure: the hook if given, else the console. */
+  private report(failure: ProxyFailure): void {
+    if (this.onError) {
+      try {
+        this.onError(failure);
+      } catch {
+        // A logging hook must not turn a 502 into a crash.
+      }
+      return;
+    }
+    console.error(`Fingerly proxy: ${failure.message}`);
+  }
+
+  /**
+   * Reports a configuration problem once per process. It repeats on every
+   * request until the deployment is fixed, so one line is enough.
+   */
+  private reportOnce(problem: string, failure: ProxyFailure): void {
+    if (reported.has(problem)) return;
+    reported.add(problem);
+    this.report(failure);
+  }
 
   /** What `JSON.stringify` and `console.log` show: everything but the key. */
   toJSON(): Record<string, unknown> {
@@ -176,10 +233,11 @@ export class FingerlyProxy {
       this.#scope = parseKey(this.#key ?? "", this.usesProxyKey ? "px" : "sk");
       return this.#scope;
     } catch {
-      logOnce(
-        "proxy-key",
-        "Fingerly proxy misconfigured: the proxy key is missing or invalid; every proxied request answers 500",
-      );
+      this.reportOnce("proxy-key", {
+        kind: "misconfigured",
+        message:
+          "the proxy key is missing or invalid; every proxied request answers 500",
+      });
       return null;
     }
   }
@@ -260,17 +318,24 @@ function normalizePath(value: string): string {
   return path;
 }
 
-/** Problems already logged by this process; each is logged once. */
-const logged = new Set<string>();
+/** Configuration problems already reported by this process. */
+const reported = new Set<string>();
 
 /**
- * Logs a configuration problem once per process. It repeats on every request
- * until the deployment is fixed, so one line is enough.
+ * A one-line description of a transport failure, without stack or body:
+ * `fetch failed (ECONNREFUSED)` rather than the error object.
  */
-function logOnce(problem: string, line: string): void {
-  if (logged.has(problem)) return;
-  logged.add(problem);
-  console.error(line);
+function describe(error: unknown): string {
+  if (!(error instanceof Error)) return "upstream request failed";
+  const cause = (error as { cause?: { code?: unknown; message?: unknown } })
+    .cause;
+  const detail =
+    typeof cause?.code === "string"
+      ? cause.code
+      : typeof cause?.message === "string"
+        ? cause.message
+        : "";
+  return `upstream request failed: ${error.message}${detail ? ` (${detail})` : ""}`;
 }
 
 /** Builds a plain-text refusal that never reaches Fingerly. */

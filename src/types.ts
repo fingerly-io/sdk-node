@@ -105,4 +105,23 @@ export interface ProxyOptions {
   clientIp(request: Request): string | Promise<string>;
   /** Replacement `fetch` for the upstream call. */
   fetchImpl?: typeof fetch;
+  /**
+   * Receives one concise line per failure, for your own logger. Without it
+   * failures go to `console.error`. Upstream failures are answered 502 or 504
+   * and configuration problems 500; the handler itself never throws.
+   */
+  onError?: ((failure: ProxyFailure) => void) | undefined;
+}
+
+/** A problem the proxy answered for instead of forwarding. */
+export interface ProxyFailure {
+  /**
+   * `timeout`: the upstream did not answer within the deadline (504).
+   * `upstream`: it was unreachable or answered unusably (502).
+   * `misconfigured`: the key or client IP callback is unusable (500); these
+   * are reported once per process.
+   */
+  kind: "timeout" | "upstream" | "misconfigured";
+  /** One line, without stack, body or credentials. */
+  message: string;
 }
