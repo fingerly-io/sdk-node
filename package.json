@@ -4,7 +4,7 @@
   "publishConfig": { "access": "public" },
   "description": "Server-side Fingerly SDK for event reads, webhook verification, and same-origin proxying",
   "license": "Apache-2.0",
-  "repository": {"type": "git", "url": "https://github.com/fingerly-io/sdk-node.git"},
+  "repository": {"type": "git", "url": "https://github.com/fingerly-io/sdks.git", "directory": "server/node"},
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
