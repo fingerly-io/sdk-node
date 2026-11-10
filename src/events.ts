@@ -19,8 +19,17 @@ export class EventsClient {
    *   `retryAfter`) if the request id was accepted but the event is not
    *   recorded yet; `404 event_not_found` if it was never issued or is past
    *   retention. Neither is retried automatically.
+   * @throws {TypeError} If `requestId` is empty, `.` or `..`; no request is
+   *   sent.
    */
   get(requestId: string, signal?: AbortSignal): Promise<Event> {
+    // URL parsers resolve a dot segment even when it is percent-encoded, so
+    // escaping cannot keep these in the path: `.` and the empty id would name
+    // the list route, and `..` a route above it, key attached.
+    if (requestId === "" || requestId === "." || requestId === "..")
+      return Promise.reject(
+        new TypeError("requestId is not a Fingerly request id"),
+      );
     return this.transport.get<Event>(
       `/events/${encodeURIComponent(requestId)}`,
       signal,

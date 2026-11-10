@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3
+
+- `events.get` refuses an empty request id, `.` and `..` with a `TypeError`
+  before sending anything. URL parsing resolved them as dot segments, so they
+  read the event list or a route above it with the secret key attached.
+
 ## 0.1.2
 
 Fixes from running the SDK in production builds of Express, Fastify, NestJS,

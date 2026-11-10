@@ -250,7 +250,7 @@ describe("same-origin proxy", () => {
     expect(response.status).toBe(200);
     expect(upstream?.url).toBe("https://api.fingerly.io/api/v1/ingest");
     expect(upstream?.headers.get("x-fingerly-proxy-version")).toBe(
-      "node/0.1.2",
+      "node/0.1.3",
     );
     expect(upstream?.headers.get("x-fingerly-client-ip")).toBe("203.0.113.10");
     expect(upstream?.headers.get("x-fingerly-origin")).toBe(

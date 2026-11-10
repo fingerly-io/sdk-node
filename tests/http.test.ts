@@ -35,6 +35,33 @@ describe("bounded event reads", () => {
     expect(target).toBe("https://api.fingerly.io/api/v1/events/id%2Fa");
     expect(redirect).toBe("manual");
   });
+  it.each(["", ".", ".."])(
+    "refuses the request id %j without sending a request",
+    async (requestId) => {
+      const fetchImpl = vi.fn(async () => Response.json(event));
+      const client = load({ secretKey: key, fetchImpl });
+      await expect(client.events.get(requestId)).rejects.toThrow(
+        new TypeError("requestId is not a Fingerly request id"),
+      );
+      expect(fetchImpl).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    ["id", "https://api.fingerly.io/api/v1/events/id"],
+    ["a.b", "https://api.fingerly.io/api/v1/events/a.b"],
+    ["...", "https://api.fingerly.io/api/v1/events/..."],
+  ])("reads the request id %j", async (requestId, expected) => {
+    let target = "";
+    const client = load({
+      secretKey: key,
+      fetchImpl: async (url) => {
+        target = String(url);
+        return Response.json(event);
+      },
+    });
+    await expect(client.events.get(requestId)).resolves.toMatchObject(event);
+    expect(target).toBe(expected);
+  });
   it("preserves structured error metadata and the old constructor", async () => {
     const client = load({ secretKey: key, fetchImpl: async () => missing() });
     await expect(client.events.get("missing")).rejects.toMatchObject({

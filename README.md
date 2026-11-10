@@ -314,7 +314,7 @@ Next.js middleware can use the Fetch handler only on the Node runtime:
 `proxy.ts` on Next.js 16. The default Edge runtime has no `node:net` or
 `node:crypto`.
 
-The proxy reports itself upstream as `node/0.1.2`, which the dashboard shows
+The proxy reports itself upstream as `node/0.1.3`, which the dashboard shows
 per proxy. `secretKey` remains a deprecated proxy option; do not pass it
 together with `proxyKey`.
 
