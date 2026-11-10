@@ -25,7 +25,7 @@ const DEFAULT_MAX_BODY_BYTES = 1_048_576;
 const DEFAULT_TIMEOUT_MS = 5_000;
 
 /** What this proxy reports itself as upstream; shown per proxy in the dashboard. */
-const PROXY_VERSION = "node/0.1.3";
+const PROXY_VERSION = "node/0.1.4";
 
 /** Statuses that must not carry a body. */
 const BODILESS_STATUSES = new Set([204, 205, 304]);
@@ -58,7 +58,7 @@ const MAPPED_IPV4 = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i;
  */
 export class FingerlyProxy {
   /**
-   * Server-held proxy key, or deprecated secret key, sent only to Fingerly. A
+   * Server-held proxy key, sent only to Fingerly. A
    * `#private` field, so inspecting or serialising the proxy never shows it.
    * Validated on the first request, not here, so a build without secrets can
    * still load the module that creates the proxy.
@@ -78,26 +78,19 @@ export class FingerlyProxy {
   private readonly fetchImpl: typeof fetch;
   /** Customer callback resolving the visitor IP from trusted infrastructure. */
   private readonly clientIp: ProxyOptions["clientIp"];
-  /** Proxy keys authenticate the browser's public key; secret keys do not. */
-  private readonly usesProxyKey: boolean;
   /** Where failures are reported; the console when absent. */
   private readonly onError: ProxyOptions["onError"];
 
   /**
    * @param options Proxy options. Everything but the key is validated here;
    *   the key is validated on the first request (see {@link handle}).
-   * @throws {TypeError} If a route, limit or callback is invalid, or both a
-   *   proxy key and the deprecated secret key are passed.
+   * @throws {TypeError} If a route, limit or callback is invalid.
    */
   constructor(options: ProxyOptions) {
-    const { proxyKey, secretKey } = options;
-    if (proxyKey && secretKey)
-      throw new TypeError("Pass proxyKey or deprecated secretKey, not both");
     if (typeof options.clientIp !== "function")
       throw new TypeError("clientIp is required");
 
-    this.usesProxyKey = !secretKey;
-    this.#key = proxyKey || secretKey || undefined;
+    this.#key = options.proxyKey || undefined;
     this.upstreamUrl =
       normalizeOrigin(options.upstream ?? DEFAULT_ENDPOINT) +
       `/api/${normalizeApiVersion(options.apiVersion)}/ingest`;
@@ -299,7 +292,7 @@ export class FingerlyProxy {
   private validatedScope(): KeyScope | null {
     if (this.#scope !== null) return this.#scope;
     try {
-      this.#scope = parseKey(this.#key ?? "", this.usesProxyKey ? "px" : "sk");
+      this.#scope = parseKey(this.#key ?? "", "px");
       return this.#scope;
     } catch {
       this.reportOnce("proxy-key", {
@@ -314,9 +307,8 @@ export class FingerlyProxy {
   /**
    * Decides which key to present upstream.
    *
-   * With a proxy key the browser must supply a public key for the same
-   * environment, which the proxy forwards alongside its own. The deprecated
-   * secret-key mode authenticates on its own and accepts anything.
+   * The browser must supply a public key for the same environment, which the
+   * proxy forwards alongside its own.
    *
    * @param presented The browser's `x-api-key` header, if any.
    * @returns The key to forward, or null when the caller is unauthorised.
@@ -325,7 +317,6 @@ export class FingerlyProxy {
     scope: KeyScope,
     presented: string | null,
   ): string | null {
-    if (!this.usesProxyKey) return this.#key!;
     try {
       const browser = parseKey(presented ?? "", "pk");
       return browser.environment === scope.environment ? presented : null;
@@ -359,7 +350,7 @@ export class FingerlyProxy {
       "x-fingerly-user-agent": request.headers.get("user-agent") ?? "",
       "x-fingerly-proxy-version": PROXY_VERSION,
     });
-    if (this.usesProxyKey) headers.set("x-fingerly-proxy-key", this.#key!);
+    headers.set("x-fingerly-proxy-key", this.#key!);
     const idempotencyKey = request.headers.get("idempotency-key");
     if (idempotencyKey) headers.set("idempotency-key", idempotencyKey);
     return headers;

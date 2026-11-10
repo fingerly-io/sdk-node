@@ -38,7 +38,7 @@ beforeAll(async () => {
     upstream.listen(0, "127.0.0.1", resolve),
   );
   const handler = createNodeProxy({
-    secretKey: "fly_sk_development_test",
+    proxyKey: "fly_px_development_test",
     upstream: `http://127.0.0.1:${(upstream.address() as AddressInfo).port}`,
     path: "/k7x2qm4a",
     maxBodyBytes: 1_048_576,
@@ -135,7 +135,7 @@ describe("Node handler", () => {
 
   it("leaves a failing next handler's rejection to the framework", async () => {
     const handler = createNodeProxy({
-      secretKey: "fly_sk_development_test",
+      proxyKey: "fly_px_development_test",
       path: "/k7x2qm4a",
       clientIp: () => "127.0.0.1",
       onError: () => {},
@@ -188,7 +188,10 @@ describe("Node handler", () => {
           port: appPort,
           method: "POST",
           path: "/k7x2qm4a",
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": "fly_pk_development_test",
+          },
         },
         (res) => {
           res.resume();

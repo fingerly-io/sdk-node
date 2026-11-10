@@ -9,6 +9,9 @@ import {
 } from "../src/index.js";
 import { parseRetryAfter } from "../src/transport.js";
 const key = "fly_sk_development_test";
+const proxyKey = "fly_px_development_test";
+/** The browser's public key, which the proxy forwards beside its own. */
+const browserKey = { "x-api-key": "fly_pk_development_test" };
 const missing = () =>
   Response.json(
     {
@@ -347,12 +350,13 @@ describe("proxy boundary", () => {
     const request = (init: RequestInit = {}) =>
       new Request("https://shop.test/k7x2qm4a", {
         method: "POST",
+        headers: browserKey,
         body: "{}",
         ...init,
       });
     const proxyWith = (fetchImpl: typeof fetch) =>
       createProxy({
-        secretKey: key,
+        proxyKey,
         timeoutMs: 20,
         clientIp: () => "127.0.0.1",
         fetchImpl,
@@ -397,13 +401,17 @@ describe("proxy boundary", () => {
     const MiB = 1_048_576;
     const proxyFor = (body: () => BodyInit) =>
       createProxy({
-        secretKey: key,
+        proxyKey,
         clientIp: () => "127.0.0.1",
         fetchImpl: async () => new Response(body()),
         onError: () => {},
       });
     const request = () =>
-      new Request("https://shop.test/k7x2qm4a", { method: "POST", body: "{}" });
+      new Request("https://shop.test/k7x2qm4a", {
+        method: "POST",
+        headers: browserKey,
+        body: "{}",
+      });
     const exact = await proxyFor(() => new Uint8Array(4 * MiB))(request());
     expect(exact.status).toBe(200);
     expect((await exact.arrayBuffer()).byteLength).toBe(4 * MiB);
@@ -431,13 +439,14 @@ describe("proxy boundary", () => {
     });
     const send = (clientIp: () => unknown) =>
       createProxy({
-        secretKey: key,
+        proxyKey,
         clientIp: clientIp as () => string,
         fetchImpl: fetchImpl as unknown as typeof fetch,
         onError: (failure) => failures.push(failure.message),
       })(
         new Request("https://shop.test/k7x2qm4a", {
           method: "POST",
+          headers: browserKey,
           body: "{}",
         }),
       );
@@ -475,7 +484,7 @@ describe("proxy boundary", () => {
   it("answers only the exact configured path", async () => {
     const fetchImpl = vi.fn(async () => Response.json({}));
     const proxy = createProxy({
-      secretKey: key,
+      proxyKey,
       path: "/k7x2qm4a/",
       clientIp: () => "127.0.0.1",
       fetchImpl,
@@ -485,6 +494,7 @@ describe("proxy boundary", () => {
         await proxy(
           new Request(`https://shop.test${path}`, {
             method: "POST",
+            headers: browserKey,
             body: "{}",
           }),
         )
@@ -506,21 +516,25 @@ describe("proxy boundary", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     for (const path of ["k7x2qm4a", "/", "/a/../b", "/a%2fb", "/a b", "/a?b"])
       expect(() =>
-        createProxy({ secretKey: key, path, clientIp: () => "127.0.0.1" }),
+        createProxy({ proxyKey, path, clientIp: () => "127.0.0.1" }),
       ).toThrow(TypeError);
   });
 
   it("logs one line per failure to the console without a hook", async () => {
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     const proxy = createProxy({
-      secretKey: key,
+      proxyKey,
       clientIp: () => "127.0.0.1",
       fetchImpl: async () => {
         throw new TypeError("fetch failed");
       },
     });
     const r = await proxy(
-      new Request("https://shop.test/k7x2qm4a", { method: "POST", body: "{}" }),
+      new Request("https://shop.test/k7x2qm4a", {
+        method: "POST",
+        headers: browserKey,
+        body: "{}",
+      }),
     );
     expect(r.status).toBe(502);
     expect(errors).toHaveBeenCalledTimes(1);

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4
+
+- The proxy takes `proxyKey` only.
+
 ## 0.1.3
 
 - `events.get` refuses an empty request id, `.` and `..` with a `TypeError`

@@ -84,9 +84,7 @@ export interface ProxyOptions {
    * Checked on the first request, so it may be unset while a build loads the
    * route module.
    */
-  proxyKey?: string | undefined;
-  /** @deprecated Use proxyKey. Secret read keys will be refused in the next major version. */
-  secretKey?: string | undefined;
+  proxyKey: string | undefined;
   /** API route version forwarded upstream. Defaults to v1. */
   apiVersion?: string;
   /** Overrides the upstream origin implied by the key. */
