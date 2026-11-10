@@ -31,6 +31,11 @@ const MAX_SIGNATURES = 32;
 export function verifyWebhook(options: VerifyWebhookOptions): boolean {
   const { secret, payload, signature, timestamp } = options;
   if (!secret || !timestamp || !signature) return false;
+  // Every value here arrived from an untrusted request, and a body parser
+  // hands over undefined or {} for an empty body: reject, do not throw.
+  if (typeof timestamp !== "string" || typeof signature !== "string")
+    return false;
+  if (typeof payload !== "string" && !ArrayBuffer.isView(payload)) return false;
 
   // Check freshness before spending a HMAC on an obvious replay.
   const tolerance = options.toleranceSeconds ?? DEFAULT_TOLERANCE_SECONDS;

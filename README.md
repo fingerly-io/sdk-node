@@ -112,7 +112,10 @@ the rate limit headers (`retry-after` included), so nothing on the response
 names Fingerly, and marks every response `no-store`. It answers:
 
 - **404** for any path but the issued one: no prefix, trailing or doubled
-  slash, dot segment or encoded character, and case-sensitive.
+  slash, dot segment or encoded character, and case-sensitive. A Fetch route
+  sees the URL after the runtime resolved dot segments, so only the Node
+  handler can refuse those; the raw path never reaches anything but ingest
+  either way.
 - **401** when the browser's public key is missing or for another environment,
   **405** for anything but `POST`, **413** for bodies over 1 MiB
   (`maxBodyBytes`), all without calling upstream.
@@ -290,7 +293,28 @@ not already route only that path to it. `Fingerly.createNodeProxy(options)`
 returns `(req, res, next?)` middleware for anything built on `node:http`. Both
 are also available as `new FingerlyProxy(options).handle` and `.handleNode`.
 
-The proxy reports itself upstream as `node/0.1.1`, which the dashboard shows
+The Node handler has to run before anything reads the body:
+
+```ts
+// Fastify: in an onRequest hook, which runs before body parsing.
+app.addHook("onRequest", (req, reply, done) => {
+  proxy(req.raw, reply.raw, done);
+});
+
+// Koa
+app.use((ctx, next) => proxy(ctx.req, ctx.res, next));
+
+// Hono on Node: the Fetch handler, or the Node handler where you want the
+// TCP peer, returning RESPONSE_ALREADY_SENT from @hono/node-server afterwards.
+app.post("/k7x2qm4a", (c) => proxy(c.req.raw));
+```
+
+Next.js middleware can use the Fetch handler only on the Node runtime:
+`export const config = { runtime: "nodejs" }` on Next.js 15.5 or later, or
+`proxy.ts` on Next.js 16. The default Edge runtime has no `node:net` or
+`node:crypto`.
+
+The proxy reports itself upstream as `node/0.1.2`, which the dashboard shows
 per proxy. `secretKey` remains a deprecated proxy option; do not pass it
 together with `proxyKey`.
 

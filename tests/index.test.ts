@@ -103,6 +103,47 @@ describe("release metadata", () => {
   });
 });
 
+describe("verifyWebhook with untrusted input", () => {
+  const timestamp = "1700000000";
+  const now = new Date(1700000000_000);
+  const signature = "sha256=" + "a".repeat(64);
+
+  it("rejects a body parser's empty result instead of throwing", () => {
+    for (const payload of [undefined, {}, null, 7, []]) {
+      expect(
+        verifyWebhook({
+          secret: "secret",
+          payload: payload as never,
+          timestamp,
+          signature,
+          now,
+        }),
+      ).toBe(false);
+    }
+  });
+
+  it("rejects headers that are not strings", () => {
+    expect(
+      verifyWebhook({
+        secret: "secret",
+        payload: "{}",
+        timestamp: [timestamp] as never,
+        signature,
+        now,
+      }),
+    ).toBe(false);
+    expect(
+      verifyWebhook({
+        secret: "secret",
+        payload: "{}",
+        timestamp,
+        signature: [signature] as never,
+        now,
+      }),
+    ).toBe(false);
+  });
+});
+
 describe("verifyWebhook signature list", () => {
   it("considers only the first 32 candidates", () => {
     const payload = '{"ok":true}';
@@ -209,7 +250,7 @@ describe("same-origin proxy", () => {
     expect(response.status).toBe(200);
     expect(upstream?.url).toBe("https://api.fingerly.io/api/v1/ingest");
     expect(upstream?.headers.get("x-fingerly-proxy-version")).toBe(
-      "node/0.1.1",
+      "node/0.1.2",
     );
     expect(upstream?.headers.get("x-fingerly-client-ip")).toBe("203.0.113.10");
     expect(upstream?.headers.get("x-fingerly-origin")).toBe(

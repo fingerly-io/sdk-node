@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.2
+
+Fixes from running the SDK in production builds of Express, Fastify, NestJS,
+Koa, Hono and Next.js.
+
+- `verifyWebhook` refuses a missing body instead of throwing, which an
+  unauthenticated request could turn into a 500.
+- A rejected `next()` in the Koa adapter is no longer swallowed.
+- Next.js no longer freezes event reads at build time.
+- An IPv6 address with a zone id is refused as a client IP.
+
 ## 0.1.1
 
 Fixes from testing the SDK inside real Next.js, Express and NestJS apps.

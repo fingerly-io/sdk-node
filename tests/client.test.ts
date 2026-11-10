@@ -24,6 +24,30 @@ describe("Fingerly class API", () => {
     expect(load({ secretKey })).toBeInstanceOf(Fingerly);
   });
 
+  it("keeps every read out of a framework's fetch cache", async () => {
+    const client = new Fingerly({ secretKey });
+    // A framework patches fetch after the module that made the client loaded.
+    const patched = vi.fn<typeof fetch>().mockResolvedValue(new Response("{}"));
+    vi.stubGlobal("fetch", patched);
+    try {
+      await client.events.list();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(patched.mock.calls[0]?.[1]?.cache).toBe("no-store");
+  });
+
+  it("does not wrap Next.js's dynamic-rendering signal", async () => {
+    const signal = Object.assign(new Error("Dynamic server usage"), {
+      digest: "DYNAMIC_SERVER_USAGE",
+    });
+    const client = new Fingerly({
+      secretKey,
+      fetchImpl: vi.fn<typeof fetch>().mockRejectedValue(signal),
+    });
+    await expect(client.events.list()).rejects.toBe(signal);
+  });
+
   it("verifies raw webhook bytes through the static API", () => {
     const secret = "whsec_test";
     const payload = Buffer.from('{"action":"checkout"}');

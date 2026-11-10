@@ -30,7 +30,8 @@ export interface NodeTarget {
  * get right by hand: match the raw path before any normalisation, stream the
  * body unread (bounded by the proxy), pass the TCP peer address to
  * `clientIp`, cancel upstream when the visitor disconnects, and write the
- * answer back. It never throws and never calls `next` with an error.
+ * answer back. It never throws and never calls `next` with an error; what
+ * `next` itself returns or rejects with is the framework's, and passes through.
  */
 export async function serveNode(
   target: NodeTarget,
@@ -54,6 +55,18 @@ export async function serveNode(
     return write(res, plain(404, "Not Found"));
   }
 
+  // Everything past here is the proxy's own, answered by itself; a failure
+  // writing the answer must not surface as a framework error.
+  return answer(target, req, res, rawUrl).catch(() => {});
+}
+
+/** Forwards a request for the proxy's path and writes the outcome. */
+async function answer(
+  target: NodeTarget,
+  req: IncomingMessage & { rawBody?: unknown; _body?: unknown },
+  res: ServerResponse,
+  rawUrl: string,
+): Promise<void> {
   const body = requestBody(req);
   if (body === "consumed") {
     target.misconfigured(

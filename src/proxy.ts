@@ -25,7 +25,7 @@ const DEFAULT_MAX_BODY_BYTES = 1_048_576;
 const DEFAULT_TIMEOUT_MS = 5_000;
 
 /** What this proxy reports itself as upstream; shown per proxy in the dashboard. */
-const PROXY_VERSION = "node/0.1.1";
+const PROXY_VERSION = "node/0.1.2";
 
 /** Statuses that must not carry a body. */
 const BODILESS_STATUSES = new Set([204, 205, 304]);
@@ -154,9 +154,7 @@ export class FingerlyProxy {
       req,
       res,
       next,
-    ).catch(() => {
-      // serveNode answers every failure itself; this only guards the promise.
-    });
+    );
 
   /**
    * The shared path behind {@link handle} and the Node handler.
@@ -422,7 +420,8 @@ async function resolveClientIp(
   } catch {
     throw new ClientIpUnusable("threw");
   }
-  if (typeof value !== "string" || isIP(value) === 0)
+  // `isIP` accepts a zone id ("fe80::1%en0"), which the API refuses every time.
+  if (typeof value !== "string" || isIP(value) === 0 || value.includes("%"))
     throw new ClientIpUnusable(
       typeof value === "string"
         ? "returned something other than one IP address"

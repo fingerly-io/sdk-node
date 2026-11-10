@@ -10,7 +10,7 @@ export interface paths {
         put?: never;
         /**
          * Request an attestation challenge
-         * @description Issues a one-time, five-minute challenge bound to the authenticated key. The Android SDK has the device keystore attest to it and includes the attestation in its identify request.
+         * @description Issues a one-time, five-minute challenge bound to the authenticated key. Android has the device keystore attest to it and iOS signs it with App Attest; either way the evidence goes in the identify request, and a report that does not carry one of these challenges is never treated as proven.
          */
         post: operations["requestAttestationChallenge"];
         delete?: never;
@@ -90,7 +90,9 @@ export interface paths {
         put?: never;
         /**
          * Identify a visitor
-         * @description Submits the signal report a client SDK collected and answers with the complete verdict: the request ID, the visitor ID and its confidence, and the suspect score, level and triggers. There is no second call to make.
+         * @description Submits the signal report a client SDK collected and answers with the request ID, the visitor ID and its confidence. There is no second call to make.
+         *
+         *     A browser, an app, a proxy and a hosted domain also receive `suspect_score` and `suspect_level`, unless the key withholds them, and never `triggers`. A secret key called directly from a backend receives the score, the level and the `triggers`.
          *
          *     The client SDKs build and send this request. `signals` is produced by them and is not a public contract. Send an `Idempotency-Key` header, and the same value on every retry, so a retried identification is answered and charged once.
          *
@@ -114,7 +116,7 @@ export interface paths {
         put?: never;
         /**
          * Submit from a client SDK
-         * @description The one URL the client SDKs and every first-party proxy post to. A body with a `token` is a deferred report and is answered `202` with `request_id` and `duplicate`, exactly as the deferred report route answers. Any other body is an identification and is answered `200` with the complete verdict, exactly as the identify route answers.
+         * @description The one URL the client SDKs and every first-party proxy post to. A body with a `token` is a deferred report and is answered `202` with `request_id` and `duplicate`, exactly as the deferred report route answers. Any other body is an identification and is answered `200` exactly as the identify route answers.
          *
          *     It exists so a proxy can forward everything it receives to a single path, and so the SDK can post both calls to one path of the customer's choosing, with nothing appended that a content blocker could match across sites.
          *
@@ -322,6 +324,46 @@ export interface paths {
          * @description `kind` is public or secret, and `environment` is production, staging or development. A public key needs at least one allowed origin; a secret key may have none. The response carries `secret` in full, once.
          */
         post: operations["issueSdkKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/management/organizations/{organization_id}/sdk-keys/{sdk_key_id}/apps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace the native apps a public key may be used from
+         * @description Replaces each list: Android package names, SHA-256 signing certificate digests in hex, and Apple app IDs (Team ID, a dot, the bundle identifier). An empty list means not configured.
+         */
+        put: operations["replaceNativeAppsPublicKeyMayBeUsedFrom"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/management/organizations/{organization_id}/sdk-keys/{sdk_key_id}/client-response": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set what a key's public callers are told
+         * @description With `hide_score` true, a browser, an app, a proxy and a hosted domain using this key get no `suspect_score` and no `suspect_level`; both fields are absent from the answer. The event is still scored and stored, and a secret key called directly, the event read, webhooks and the dashboard still see everything. Takes effect on the next request.
+         */
+        put: operations["setWhatKeyPublicCallersAreTold"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -592,6 +634,8 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         AttestationChallengeOut: {
+            /** @description Whether this key has an Apple app ID configured for App Attest */
+            app_attest?: boolean;
             /** @description Base64-encoded one-use attestation nonce */
             challenge: string;
             /**
@@ -636,6 +680,8 @@ export interface components {
             origin?: string;
             os?: string;
             platform: string;
+            /** @description Why enrichment did not happen, on an unavailable event */
+            reason?: string;
             request_id: string;
             sdk_platform: string;
             sdk_version: string;
@@ -697,20 +743,20 @@ export interface components {
             duplicate?: boolean;
             /** @description False when the report carried too little to identify anyone */
             identifiable: boolean;
-            /** @description Why enrichment did not happen */
+            /** @description Why enrichment did not happen. Only answered to a secret key; a browser or app reads it on the server-side event read */
             reason?: string;
             /** @description Identifies this submission */
             request_id: string;
             /** @description Whether the address could be enriched */
             state: string;
-            /** @description low, medium or high */
+            /** @description low, medium or high. Absent whenever suspect_score is */
             suspect_level?: string;
             /**
              * Format: int32
-             * @description The weighted sum of the signals that fired
+             * @description The weighted sum of the signals that fired. Absent when the event was not scored, or from a browser, an app, a proxy or a hosted domain when the key withholds it
              */
             suspect_score?: number | null;
-            /** @description What fired, and what each was worth */
+            /** @description What fired, and what each was worth. Only answered to a secret key called directly; everyone else reads them on the server-side event read, webhooks and the dashboard */
             triggers?: components["schemas"]["IdentifyTriggerOut"][];
             /**
              * Format: int32
@@ -726,8 +772,11 @@ export interface components {
             confidence?: string;
             group?: string;
             signal: string;
-            /** Format: int64 */
-            weight: number;
+            /**
+             * Format: int64
+             * @description What this signal added to the score
+             */
+            weight?: number | null;
         };
         IngestIn: {
             /** @description The SDK's consent state; must be granted, or the request is refused with consent_required */
@@ -846,6 +895,8 @@ export interface components {
             origin?: string;
             os?: string;
             platform: string;
+            /** @description Why enrichment did not happen, on an unavailable event */
+            reason?: string;
             request_id: string;
             sdk_platform: string;
             sdk_version: string;
@@ -868,12 +919,15 @@ export interface components {
             rows: components["schemas"]["EventRowOut"][];
         };
         SDKInfo: {
-            /** @description The SDK that collected these signals */
+            /** @description The SDK that collected these signals. Bound to how the request authenticated; a contradiction is normalised, not trusted */
             platform: string;
             /** @description The SDK's version, such as 0.1.0 */
             version: string;
         };
         SDKKeyOut: {
+            allowed_android_packages: string[];
+            allowed_android_signers: string[];
+            allowed_apple_app_ids: string[];
             allowed_origins: string[];
             /** Format: date-time */
             created_at: string;
@@ -881,6 +935,8 @@ export interface components {
             environment: string;
             /** Format: date-time */
             expires_at?: string | null;
+            /** @description Whether suspect_score and suspect_level are withheld from a browser, an app, a proxy and a hosted domain */
+            hide_client_score: boolean;
             id: string;
             /** @description public or secret */
             kind: string;
@@ -895,6 +951,8 @@ export interface components {
             /** @description The human-readable stem, such as fly_pk_production */
             prefix: string;
             project_id: string;
+            /** @description Whether native reports without verified hardware attestation are refused */
+            require_attestation: boolean;
             /** Format: date-time */
             revoked_at?: string | null;
             revoked_by?: string;
@@ -1040,6 +1098,15 @@ export interface operations {
             };
             /** @description The organization this key belongs to is not accepting traffic */
             402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Challenges are being requested faster than the rate limit allows */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2420,11 +2487,20 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** @description Android package names, such as com.example.app */
+                    allowed_android_packages?: string[];
+                    /** @description SHA-256 signing certificate digests, 64 hex characters */
+                    allowed_android_signers?: string[];
+                    /** @description Apple app IDs: Team ID, a dot, then the bundle identifier */
+                    allowed_apple_app_ids?: string[];
+                    /** @description Scheme and host, no path. A public key names at least one origin, Android package or Apple app ID */
                     allowed_origins?: string[];
                     /** @description production, staging or development */
                     environment?: string;
                     /** Format: date-time */
                     expires_at?: string | null;
+                    /** @description Withhold suspect_score and suspect_level from a browser, an app, a proxy and a hosted domain. Defaults to false */
+                    hide_client_score?: boolean;
                     /** @description public or secret */
                     kind?: string;
                     /** @description What the key is called. The only part a person can recognise once the secret is masked */
@@ -2470,6 +2546,190 @@ export interface operations {
                 };
             };
             /** @description The key could not be issued as described */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    replaceNativeAppsPublicKeyMayBeUsedFrom: {
+        parameters: {
+            query?: {
+                /** @description The project the key belongs to */
+                project_id?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The organization the key belongs to */
+                organization_id: string;
+                /** @description The key to scope */
+                sdk_key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Android package names, such as com.example.app. Empty means not configured */
+                    allowed_android_packages?: string[];
+                    /** @description SHA-256 signing certificate digests, 64 hex characters. Empty means not configured */
+                    allowed_android_signers?: string[];
+                    /** @description Apple app IDs: Team ID, a dot, then the bundle identifier. Empty means not configured */
+                    allowed_apple_app_ids?: string[];
+                    /** @description Refuse native reports whose hardware attestation did not verify. Leave out to keep the current setting */
+                    require_attestation?: boolean | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SDKKeyOut"];
+                };
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The management key's role does not allow this */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such resource in the key's organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The key is revoked */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An entry is not valid, or the key is secret */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setWhatKeyPublicCallersAreTold: {
+        parameters: {
+            query?: {
+                /** @description The project the key belongs to */
+                project_id?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The organization the key belongs to */
+                organization_id: string;
+                /** @description The key to change */
+                sdk_key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description True to withhold suspect_score and suspect_level from a browser, an app, a proxy and a hosted domain. The event is still scored and stored, and a secret key called directly still sees everything */
+                    hide_score?: boolean | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SDKKeyOut"];
+                };
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The management key's role does not allow this */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such resource in the key's organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The key is revoked */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description hide_score is missing */
             422: {
                 headers: {
                     [name: string]: unknown;

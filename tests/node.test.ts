@@ -133,6 +133,23 @@ describe("Node handler", () => {
     expect(seen).toEqual([{ ip: "127.0.0.1", bytes: 10 }]);
   });
 
+  it("leaves a failing next handler's rejection to the framework", async () => {
+    const handler = createNodeProxy({
+      secretKey: "fly_sk_development_test",
+      path: "/k7x2qm4a",
+      clientIp: () => "127.0.0.1",
+      onError: () => {},
+    });
+    const next = (() => Promise.reject(new Error("boom"))) as () => void;
+    await expect(
+      handler(
+        { method: "GET", url: "/elsewhere", headers: {} },
+        {} as never,
+        next,
+      ),
+    ).rejects.toThrow("boom");
+  });
+
   it("passes every other raw path to the app, dot segments included", async () => {
     seen.length = 0;
     for (const path of [

@@ -32,8 +32,8 @@ export class APITransport {
   private readonly baseUrl: string;
   /** Deadline covering both the request and reading its JSON body. */
   private readonly timeoutMs: number;
-  /** HTTP implementation; replaceable in tests or custom hosts. */
-  private readonly fetchImpl: typeof fetch;
+  /** Replacement HTTP implementation; the global `fetch` when absent. */
+  private readonly fetchImpl: typeof fetch | undefined;
   /**
    * Server-only read key, sent as `x-api-key` and redacted from errors. A
    * `#private` field, so inspecting or serialising the client never shows it.
@@ -55,7 +55,7 @@ export class APITransport {
       options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       "timeoutMs",
     );
-    this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
+    this.fetchImpl = options.fetchImpl;
     this.#secretKey = options.secretKey;
   }
 
@@ -83,12 +83,18 @@ export class APITransport {
       let response: Response;
       let bytes: Buffer | null;
       try {
-        response = await this.fetchImpl(this.baseUrl + path, {
+        // Read at call time: a client made at module scope predates a
+        // framework's fetch patch, and the framework must see `no-store` to
+        // treat this read as dynamic.
+        response = await (this.fetchImpl ?? fetch)(this.baseUrl + path, {
           headers: {
             "x-api-key": this.#secretKey!,
             accept: "application/json",
           },
           redirect: "manual",
+          // Frameworks that patch fetch (Next.js) otherwise serve a read from
+          // their cache, or freeze it into a build, as a stale event.
+          cache: "no-store",
           signal: bounded,
         });
         bytes = await readLimited(response.body, MAX_RESPONSE_BYTES, bounded);
@@ -96,6 +102,10 @@ export class APITransport {
         // The deadline and the caller's cancellation win the race in
         // withDeadline; anything else is the network or a cut-off body.
         if (bounded.aborted) throw bounded.reason;
+        // Next.js throws from a `no-store` fetch during static generation to
+        // make the page dynamic; wrapped, that signal fails the build instead.
+        if ((error as { digest?: unknown } | null)?.digest !== undefined)
+          throw error;
         throw new FingerlyConnectionError(error);
       }
       if (!response.ok) throw this.toApiError(response, bytes);
