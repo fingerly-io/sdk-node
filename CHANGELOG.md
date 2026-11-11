@@ -11,6 +11,7 @@
   the API never returns the address. `deferred_signals` is removed. `document`
   is an allow-listed view of the archived submission, without raw signals,
   user agent or address.
+- The vendored contract snapshot is refreshed.
 
 ## 0.1.4
 
