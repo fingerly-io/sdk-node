@@ -140,6 +140,41 @@ describe("bounded event reads", () => {
 });
 
 describe("reading one event", () => {
+  it("exposes the project an event belongs to", async () => {
+    const projectId = "0199a963-e400-7000-8000-0000000000a1";
+    const client = load({
+      secretKey: key,
+      fetchImpl: async () => Response.json({ ...event, project_id: projectId }),
+    });
+    const read = await client.events.get("id");
+    expect(read.project_id).toBe(projectId);
+  });
+  it("reads an event from an older server that sends no project", async () => {
+    const client = load({
+      secretKey: key,
+      fetchImpl: async () => Response.json(event),
+    });
+    const read = await client.events.get("id");
+    expect(read.request_id).toBe("stored");
+    expect(read.project_id).toBeUndefined();
+  });
+  it("exposes the project on each listed row, when sent", async () => {
+    const projectId = "0199a963-e400-7000-8000-0000000000a1";
+    const client = load({
+      secretKey: key,
+      fetchImpl: async () =>
+        Response.json({
+          rows: [{ ...event, project_id: projectId }, event],
+          page: 1,
+          page_size: 50,
+        }),
+    });
+    const page = await client.events.list();
+    expect(page.rows.map((row) => row.project_id)).toEqual([
+      projectId,
+      undefined,
+    ]);
+  });
   it("makes exactly one request and never retries, whatever comes back", async () => {
     for (const status of [400, 401, 403, 404, 429, 500]) {
       const fetchImpl = vi.fn(async () =>

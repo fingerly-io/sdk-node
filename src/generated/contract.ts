@@ -680,6 +680,8 @@ export interface components {
             origin?: string;
             os?: string;
             platform: string;
+            /** @description The project the event belongs to */
+            project_id?: string;
             /** @description Why enrichment did not happen, on an unavailable event */
             reason?: string;
             request_id: string;
@@ -895,6 +897,8 @@ export interface components {
             origin?: string;
             os?: string;
             platform: string;
+            /** @description The project the event belongs to */
+            project_id?: string;
             /** @description Why enrichment did not happen, on an unavailable event */
             reason?: string;
             request_id: string;
