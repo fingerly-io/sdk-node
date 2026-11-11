@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.5
+
+- Events carry `ip_network` (an IPv4 /24 or IPv6 /40) instead of `ip_address`;
+  the API never returns the address. `deferred_signals` is removed. `document`
+  is an allow-listed view of the archived submission, without raw signals,
+  user agent or address.
+
 ## 0.1.4
 
 - The proxy takes `proxyKey` only.

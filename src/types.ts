@@ -8,16 +8,20 @@ export type EventTrigger = components["schemas"]["EventTriggerOut"];
  *
  * Mirrors the server schema with two deliberate differences: `suspect_score`
  * is `number | null` where `null` means unscored (never treat it as zero), and
- * the archived `document` and `deferred_signals` stay opaque rather than
- * becoming a second public contract.
+ * the archived `document` stays opaque rather than becoming a second public
+ * contract. `document` is an allow-listed view of the archived submission
+ * (schema, request id, time, SDK platform and version, IP network, the
+ * classified IP with city-level location or IP error, risk, attestation and
+ * velocity flags); it carries no raw signals, no user agent and no IP address.
+ * `ip_network` is the IPv4 /24 or IPv6 /40 the request came from, such as
+ * `203.0.113.0/24`; the API never returns the address.
  */
 export type Event = Omit<
   components["schemas"]["SDKEventOut"],
-  "suspect_score" | "document" | "deferred_signals"
+  "suspect_score" | "document"
 > & {
   suspect_score: number | null;
   document?: unknown;
-  deferred_signals?: Record<string, unknown>;
 };
 
 /** One page of events, newest first. */

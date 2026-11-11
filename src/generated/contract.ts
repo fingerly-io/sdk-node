@@ -675,7 +675,8 @@ export interface components {
             device_kind?: string;
             environment: string;
             has_document: boolean;
-            ip_address: string;
+            /** @description The network the request came from: an IPv4 /24 or an IPv6 /40, such as 203.0.113.0/24 */
+            ip_network?: string;
             occurred_at: string;
             origin?: string;
             os?: string;
@@ -883,14 +884,13 @@ export interface components {
             asn_name?: string;
             country_code?: string;
             country_name?: string;
-            /** @description The deferred report attached to this request, when one arrived. Its contents are not a public contract. */
-            deferred_signals?: Record<string, never>;
             device_kind?: string;
-            /** @description The archived submission as Fingerly stored it, with the threshold and weights profile that scored it. Present when has_document is true. Its contents are not a public contract. */
+            /** @description What Fingerly keeps of the submission, present when has_document is true: the schema, request id, time, SDK, IP network, the city-level IP answer, the risk score and triggers, attestation and the velocity decisions. Never the raw signals, the user agent or the address. Its contents are not a public contract. */
             document?: Record<string, never> | null;
             environment: string;
             has_document: boolean;
-            ip_address: string;
+            /** @description The network the request came from: an IPv4 /24 or an IPv6 /40, such as 203.0.113.0/24 */
+            ip_network?: string;
             occurred_at: string;
             origin?: string;
             os?: string;
