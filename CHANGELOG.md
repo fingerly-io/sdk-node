@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.5
+
+- Events carry `project_id`, the Fingerly project an event belongs to, on
+  `events.get` and every `events.list` row; it is absent when the server does
+  not send it. Webhook `data` for `identification.completed` and
+  `visitor.suspect` (and `identification.refused` when the key was known)
+  carries `project_id`.
+- Events carry `ip_network` (an IPv4 /24 or IPv6 /40) instead of `ip_address`;
+  the API never returns the address. `deferred_signals` is removed. `document`
+  is an allow-listed view of the archived submission, without raw signals,
+  user agent or address.
+- The vendored contract snapshot is refreshed.
+
 ## 0.1.4
 
 - The proxy takes `proxyKey` only.

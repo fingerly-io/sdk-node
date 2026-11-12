@@ -76,9 +76,15 @@ that it is recent, that its environment is correct, and that it was scored.
 Apply your own policy to the server's verdict. Do not authorize an action using
 scores or visitor identifiers supplied by the browser. Tags correlate events;
 they do not replace your application's authentication or replay protection.
+Never put a personal identifier (user ID, email, install ID, advertising ID) in
+a tag: the server keeps tag values in long-lived rollups.
 An `event_pending` error means the server has not decided yet: retry after
 `retryAfter` seconds or verify asynchronously, and do not refuse the action as
 fraud on that answer alone.
+
+`project_id` on an event from `events.get`, and on every row from
+`events.list`, is the Fingerly project the event belongs to. It is absent when
+an older server does not send it.
 
 ## Webhooks
 
@@ -97,6 +103,11 @@ replay tolerance is 300 seconds. During a signing-secret rotation any one of
 the first 32 comma-separated signatures may match. Verification does not
 deduplicate, so persist processed webhook ids. The framework guides below show
 where each framework keeps the raw body.
+
+The `identification.completed` and `visitor.suspect` payloads carry
+`data.project_id`, the project the event belongs to; `identification.refused`
+carries it only when the refused request named a known key. The SDK verifies
+signatures only and does not model payload fields.
 
 ## Same-origin proxy
 
@@ -314,7 +325,7 @@ Next.js middleware can use the Fetch handler only on the Node runtime:
 `proxy.ts` on Next.js 16. The default Edge runtime has no `node:net` or
 `node:crypto`.
 
-The proxy reports itself upstream as `node/0.1.4`, which the dashboard shows
+The proxy reports itself upstream as `node/0.1.5`, which the dashboard shows
 per proxy.
 
 ## Development

@@ -59,6 +59,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/{request_id}/device-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the device's DeviceCheck bits
+         * @description Spends the DeviceCheck token held for this iOS event, once, to set bit0, bit1 or both with Apple, using your project's own Apple key. A bit left out keeps its value. The bits mean what you decide; Fingerly never reads them. Tokens are held for one hour, only for events whose App Attest evidence covered them, and only when DeviceCheck is switched on for the project's Apple credential.
+         */
+        put: operations["setDeviceDevicecheckBits"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/{request_id}/device-check/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read the device's DeviceCheck bits
+         * @description Spends the DeviceCheck token held for this iOS event, once, to read the device's two bits from Apple. A token spent on a read cannot also write; to mark a device, write instead.
+         */
+        post: operations["readDeviceDevicecheckBits"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events/{request_id}/supplement": {
         parameters: {
             query?: never;
@@ -201,6 +241,185 @@ export interface paths {
         put?: never;
         /** Check a hosted domain now */
         post: operations["checkHostedDomainNow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/management/organizations/{organization_id}/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List projects
+         * @description Every project of the organization, archived ones included.
+         */
+        get: operations["listProjects"];
+        put?: never;
+        /**
+         * Create a project
+         * @description One project per client app or site keeps its visitors, velocity, keys and data apart from every other project. `name` is 1 to 128 characters and unique in the organization.
+         */
+        post: operations["createProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/management/organizations/{organization_id}/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Archive a project
+         * @description Revokes the project's keys, so its traffic stops at once, and keeps its data. There is no un-archive.
+         */
+        delete: operations["archiveProject"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/management/organizations/{organization_id}/projects/{project_id}/attestation-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a project's Apple and Google credentials
+         * @description Metadata only: the Team ID, key ID or Cloud project number, a fingerprint of the public key and the last error the platform returned. The secret is never returned.
+         */
+        get: operations["listProjectAppleAndGoogleCredentials"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/management/organizations/{organization_id}/projects/{project_id}/attestation-credentials/apple": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upload or replace a project's Apple key
+         * @description The key (a .p8 file with DeviceCheck enabled) is used only for this project's apps: to refresh App Attest receipts and, with device_check_enabled, to read and write DeviceCheck bits on your backend's request. It is sealed on arrival and never returned. Owner or admin only.
+         */
+        put: operations["uploadOrReplaceProjectAppleKey"];
+        post?: never;
+        /**
+         * Delete a project's Apple key
+         * @description Takes effect everywhere within ten minutes. Owner or admin only.
+         */
+        delete: operations["deleteProjectAppleKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/management/organizations/{organization_id}/projects/{project_id}/attestation-credentials/google-play": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upload or replace a project's Google service account
+         * @description A service account in the Google Cloud project linked to the app in Play Console, used only to decode this project's Play Integrity tokens, within daily_budget decodes a day. Sealed on arrival and never returned. Owner or admin only.
+         */
+        put: operations["uploadOrReplaceProjectGoogleServiceAccount"];
+        post?: never;
+        /**
+         * Delete a project's Google service account
+         * @description Takes effect everywhere within ten minutes. Owner or admin only.
+         */
+        delete: operations["deleteProjectGoogleServiceAccount"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/management/organizations/{organization_id}/projects/{project_id}/installs/{platform}/{install_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Erase the visitor of one app install
+         * @description Erases the visitor an iOS or Android app install resolved to in this project, for a data subject's request that names the app and the install rather than a visitor ID. `install_id` is the identifier the Fingerly SDK stored in the app. Visitors are never shared between projects, so this finds the project's visitor and no other; the erasure then proceeds as one by visitor ID, and the answer lists it.
+         *
+         *     404 `install_not_found` means no stored identity maps to the install, so no data can be linked to it.
+         */
+        delete: operations["eraseVisitorOfOneAppInstall"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/management/organizations/{organization_id}/projects/{project_id}/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a project's purge passes */
+        get: operations["listProjectPurgePasses"];
+        put?: never;
+        /**
+         * Delete all of a project's data
+         * @description Owner or admin, or an admin management key. Archives the project if it is not archived yet - its keys are revoked at once, so no new data arrives - and deletes all of its data: its archived submissions, its stored identifications and rollups, its visitor identities, the webhook events that name it, its keys' attestation state and its Apple and Google platform credentials. There is no undo.
+         *
+         *     It runs twice: ten minutes after the request, and again a day after the first pass finished, for anything delivered late. Asking while a pass is pending returns it; asking after the purge finished queues another pass. Usage counts and the project's revoked keys are kept, because invoices and usage reports name them.
+         *
+         *     `archive_copies_expire_by` is when the last archived copy written before per-project archiving expires.
+         */
+        post: operations["deleteAllOfProjectData"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/management/organizations/{organization_id}/projects/{project_id}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one project's metered traffic, per day and per key
+         * @description The same report for the keys of one project, for re-billing one client.
+         */
+        get: operations["readOneProjectMeteredTrafficPerDayAndPerKey"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -454,6 +673,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/management/organizations/{organization_id}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read metered traffic, per day and per key
+         * @description The organization's usage, as the console's usage screen reads it: whole UTC days, half-open, `scope` all, live or test, with billed amounts and settled days.
+         */
+        get: operations["readMeteredTrafficPerDayAndPerKey"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/management/organizations/{organization_id}/visitor-erasures": {
         parameters: {
             query?: never;
@@ -638,15 +877,68 @@ export interface components {
             app_attest?: boolean;
             /** @description Base64-encoded one-use attestation nonce */
             challenge: string;
+            /** @description Whether to send a DeviceCheck token with the App Attest evidence */
+            device_check?: boolean;
             /**
              * Format: date-time
              * @description When the nonce becomes unusable
              */
             expires_at: string;
+            /** @description Whether to send a Play Integrity token bound to this challenge */
+            play_integrity?: boolean;
+        };
+        AttestationCredentialOut: {
+            /** @description Google only */
+            client_email?: string;
+            /**
+             * Format: int64
+             * @description Google only
+             */
+            cloud_project_number?: number;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: int64
+             * @description Google only
+             */
+            daily_budget?: number;
+            /** @description Apple only */
+            device_check_enabled?: boolean;
+            /** @description Lowercase hex SHA-256 of the public key, to recognise the key without the secret */
+            fingerprint: string;
+            /** @description Apple only */
+            key_id?: string;
+            /** @description A short token for the last refusal from Apple or Google, such as apple-401 */
+            last_error?: string;
+            /** Format: date-time */
+            last_error_at?: string | null;
+            /** Format: date-time */
+            last_used_at?: string | null;
+            /** @description apple or google-play */
+            provider: string;
+            /** @description Apple only */
+            team_id?: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AttestationCredentialsOut: {
+            credentials: components["schemas"]["AttestationCredentialOut"][];
         };
         CreatedWebhookOut: {
             endpoint: components["schemas"]["WebhookEndpointOut"];
             secret: string;
+        };
+        DeviceCheckQueryOut: {
+            bit0: boolean;
+            bit1: boolean;
+            /** @description False when Apple holds no bits for the device */
+            found: boolean;
+            /** @description When the bits last changed, YYYY-MM */
+            last_update?: string;
+        };
+        DeviceCheckWriteOut: {
+            bit0?: boolean | null;
+            bit1?: boolean | null;
         };
         ErrorBody: {
             code: string;
@@ -675,11 +967,14 @@ export interface components {
             device_kind?: string;
             environment: string;
             has_document: boolean;
-            ip_address: string;
+            /** @description The network the request came from: an IPv4 /24 or an IPv6 /40, such as 203.0.113.0/24 */
+            ip_network?: string;
             occurred_at: string;
             origin?: string;
             os?: string;
             platform: string;
+            /** @description The project the event belongs to */
+            project_id?: string;
             /** @description Why enrichment did not happen, on an unavailable event */
             reason?: string;
             request_id: string;
@@ -733,10 +1028,12 @@ export interface components {
             signals?: {
                 [key: string]: unknown;
             };
-            /** @description An opaque value echoed back on the event */
+            /** @description An opaque value echoed back on the event and kept in long-lived rollups. A label for your own systems, such as a client or app name; never a personal identifier (user ID, email, install ID or advertising ID) */
             tag?: string;
         };
         IdentifyOut: {
+            /** @description unknown when the report asserted with an App Attest key the server does not hold; the iOS SDK then attests a new key on its next collection. Absent otherwise */
+            app_attest_key?: string;
             /** @description Short-lived capability for the deferred signal report */
             deferred_token?: string;
             /** @description This submission was answered before; the verdict belongs to the first one */
@@ -787,7 +1084,7 @@ export interface components {
             signals?: {
                 [key: string]: unknown;
             };
-            /** @description An opaque value echoed back on the event. Identify only */
+            /** @description An opaque value echoed back on the event and kept in long-lived rollups; never a personal identifier. Identify only */
             tag?: string;
             /** @description The deferred_token returned by identify. Present only on a deferred report */
             token?: string;
@@ -808,6 +1105,44 @@ export interface components {
             organization_id: string;
             /** @description admin or developer */
             role: string;
+        };
+        ProjectArchivedOut: {
+            archived: boolean;
+            id: string;
+        };
+        ProjectOut: {
+            /** Format: date-time */
+            created_at: string;
+            id: string;
+            name: string;
+            organization_id: string;
+            status: string;
+        };
+        ProjectPurgeOut: {
+            /**
+             * Format: date-time
+             * @description When the last archived copy of the project's data, written before per-project archiving, expires; absent if the project never sent traffic
+             */
+            archive_copies_expire_by?: string | null;
+            /** Format: date-time */
+            completed_at?: string | null;
+            id: string;
+            /**
+             * Format: date-time
+             * @description When a pending pass runs next
+             */
+            next_attempt_at: string;
+            /** @description first, ten minutes after the request, or sweep, a day after the first finished */
+            pass: string;
+            project_id: string;
+            /** @description pending, then done */
+            status: string;
+        };
+        ProjectPurgesOut: {
+            purges: components["schemas"]["ProjectPurgeOut"][];
+        };
+        ProjectsOut: {
+            projects: components["schemas"]["ProjectOut"][];
         };
         ProxyCredentialOut: {
             /** Format: date-time */
@@ -883,18 +1218,19 @@ export interface components {
             asn_name?: string;
             country_code?: string;
             country_name?: string;
-            /** @description The deferred report attached to this request, when one arrived. Its contents are not a public contract. */
-            deferred_signals?: Record<string, never>;
             device_kind?: string;
-            /** @description The archived submission as Fingerly stored it, with the threshold and weights profile that scored it. Present when has_document is true. Its contents are not a public contract. */
+            /** @description What Fingerly keeps of the submission, present when has_document is true: the schema, request id, time, SDK, IP network, the city-level IP answer, the risk score and triggers, attestation and the velocity decisions. Never the raw signals, the user agent or the address. Its contents are not a public contract. */
             document?: Record<string, never> | null;
             environment: string;
             has_document: boolean;
-            ip_address: string;
+            /** @description The network the request came from: an IPv4 /24 or an IPv6 /40, such as 203.0.113.0/24 */
+            ip_network?: string;
             occurred_at: string;
             origin?: string;
             os?: string;
             platform: string;
+            /** @description The project the event belongs to */
+            project_id?: string;
             /** @description Why enrichment did not happen, on an unavailable event */
             reason?: string;
             request_id: string;
@@ -992,6 +1328,76 @@ export interface components {
             /** @description The identical supplement was accepted before */
             duplicate?: boolean;
             request_id: string;
+        };
+        UsageDayOut: {
+            /**
+             * Format: int64
+             * @description How much of it was on a production key
+             */
+            billable: number;
+            /** Format: int64 */
+            billed_micros: number;
+            /**
+             * Format: int64
+             * @description Everything that arrived, including what was refused
+             */
+            checks: number;
+            /** Format: date-time */
+            date: string;
+            /**
+             * Format: int64
+             * @description Rate-limited or out of credit
+             */
+            rejected: number;
+            settled: boolean;
+            /**
+             * Format: int64
+             * @description Counted and never billed
+             */
+            test: number;
+        };
+        UsageKeyOut: {
+            /** Format: int64 */
+            billable: number;
+            /** Format: int64 */
+            billed_micros: number;
+            /** Format: int64 */
+            checks: number;
+            environment: string;
+            id: string;
+            /** @description public or secret */
+            kind?: string;
+            last4?: string;
+            /**
+             * Format: date-time
+             * @description Written best-effort and batched
+             */
+            last_used_at?: string | null;
+            name?: string;
+            prefix?: string;
+            /** Format: int64 */
+            rejected: number;
+            status?: string;
+        };
+        UsageOut: {
+            days: components["schemas"]["UsageDayOut"][];
+            /** Format: date-time */
+            from: string;
+            keys: components["schemas"]["UsageKeyOut"][];
+            /** Format: int64 */
+            pending_checks: number;
+            /** Format: int64 */
+            pending_days: number;
+            /** Format: int64 */
+            pending_micros: number;
+            /** Format: int64 */
+            rate_per_check_micros: number;
+            /** Format: int64 */
+            rate_per_lookup_micros: number;
+            /** Format: date-time */
+            settled_through?: string | null;
+            /** Format: date-time */
+            to: string;
         };
         VisitorErasureOut: {
             /**
@@ -1105,7 +1511,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Challenges are being requested faster than the rate limit allows */
+            /** @description Challenges are being requested faster than the key's, the address's or the organization's rate limit allows; retry after Retry-After */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -1174,6 +1580,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The organization is suspended or closed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description The request could not be validated. */
             422: {
                 headers: {
@@ -1223,6 +1638,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The organization is suspended or closed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description `event_not_found`: no event with that request ID in this key's environment, or it is older than 30 days. `event_pending`: the identification was accepted and is still being recorded; retry after the `Retry-After` seconds */
             404: {
                 headers: {
@@ -1234,6 +1658,185 @@ export interface operations {
             };
             /** @description The request could not be validated. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setDeviceDevicecheckBits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The value to set for the first bit. Leave out to keep it */
+                    bit0?: boolean | null;
+                    /** @description The value to set for the second bit. Leave out to keep it */
+                    bit1?: boolean | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCheckWriteOut"];
+                };
+            };
+            /** @description No usable secret SDK key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The organization is suspended or closed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `device_check_not_held`: no token is held for that event */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `device_check_spent`, `device_check_busy` or `credential_unavailable` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `bits_required` or `apple_rejected` */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `device_check_unavailable`: retry within the hour */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    readDeviceDevicecheckBits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCheckQueryOut"];
+                };
+            };
+            /** @description No usable secret SDK key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The organization is suspended or closed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `device_check_not_held`: no token is held for that event */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `device_check_spent`, `device_check_busy` or `credential_unavailable` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request could not be validated. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `device_check_unavailable`: retry within the hour */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1401,7 +2004,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The organization is over its rate limit */
+            /** @description The SDK key or the organization is over its rate limit; retry after Retry-After. A secret key called from a backend is also told which limit in Fingerly-RateLimit-Scope */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -1497,7 +2100,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The organization is over its rate limit */
+            /** @description The SDK key or the organization is over its rate limit; retry after Retry-After. A secret key called from a backend is also told which limit in Fingerly-RateLimit-Scope */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -1553,7 +2156,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The management key's role does not allow this */
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -1850,6 +2453,917 @@ export interface operations {
             };
             /** @description The request could not be validated. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listProjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectsOut"];
+                };
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such resource in the key's organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request could not be validated. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Only an admin key may create a project */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such resource in the key's organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The name is taken, or the organization is at its project limit */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request could not be validated. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    archiveProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectArchivedOut"];
+                };
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Only an admin key may archive a project */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such resource in the key's organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request could not be validated. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listProjectAppleAndGoogleCredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization the project belongs to */
+                organization_id: string;
+                /** @description The project the credentials are for */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttestationCredentialsOut"];
+                };
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such resource in the key's organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request could not be validated. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    uploadOrReplaceProjectAppleKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization the project belongs to */
+                organization_id: string;
+                /** @description The project the credential is for */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Ask iOS apps for a DeviceCheck token and hold it for this project's backend for one hour. Defaults to false */
+                    device_check_enabled?: boolean;
+                    /** @description The 10-character ID of the key, as App Store Connect shows it */
+                    key_id?: string;
+                    /** @description The PEM contents of the .p8 file. The key must have DeviceCheck enabled. Never returned */
+                    private_key?: string;
+                    /** @description The 10-character Apple Team ID that owns the apps */
+                    team_id?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttestationCredentialOut"];
+                };
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such resource in the key's organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The key or an identifier is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials cannot be stored on this deployment */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteProjectAppleKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization the project belongs to */
+                organization_id: string;
+                /** @description The project the credentials are for */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The project has no Apple credential */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request could not be validated. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    uploadOrReplaceProjectGoogleServiceAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization the project belongs to */
+                organization_id: string;
+                /** @description The project the credential is for */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: int64
+                     * @description The number of the Google Cloud project linked to the app in Play Console
+                     */
+                    cloud_project_number?: number;
+                    /**
+                     * Format: int64
+                     * @description Play Integrity decodes Fingerly may spend per UTC day. Defaults to 4000, leaving the rest of Google's 10000 to your own use
+                     */
+                    daily_budget?: number | null;
+                    /** @description The JSON key file of a service account in that project. Never returned */
+                    service_account?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttestationCredentialOut"];
+                };
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such resource in the key's organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The service account or a field is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Credentials cannot be stored on this deployment */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteProjectGoogleServiceAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization the project belongs to */
+                organization_id: string;
+                /** @description The project the credentials are for */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The project has no Google Play credential */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request could not be validated. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    eraseVisitorOfOneAppInstall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization */
+                organization_id: string;
+                /** @description The project the app belongs to */
+                project_id: string;
+                /** @description ios or android */
+                platform: string;
+                /** @description The install identifier the Fingerly SDK stored in the app */
+                install_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisitorErasuresOut"];
+                };
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Only an admin key may erase a visitor */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such project, or no visitor holds that install */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The platform is not ios or android */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listProjectPurgePasses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization */
+                organization_id: string;
+                /** @description The project */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPurgesOut"];
+                };
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Only an admin key may purge a project */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such resource in the key's organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request could not be validated. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteAllOfProjectData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The organization */
+                organization_id: string;
+                /** @description The project */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPurgeOut"];
+                };
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Only an admin key may purge a project */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such resource in the key's organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request could not be validated. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    readOneProjectMeteredTrafficPerDayAndPerKey: {
+        parameters: {
+            query?: {
+                /** @description The project to report on */
+                project_id?: string;
+                /** @description First day, YYYY-MM-DD. Defaults to 30 days ago */
+                from?: string;
+                /** @description Last day, exclusive, YYYY-MM-DD. Defaults to tomorrow */
+                to?: string;
+                /** @description all, live or test */
+                scope?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The organization to report on */
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageOut"];
+                };
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Only an admin key may read usage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request could not be validated. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description This deployment has no warehouse */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2190,7 +3704,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The management key's role does not allow this */
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2527,7 +4041,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The management key's role does not allow this */
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2613,7 +4127,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The management key's role does not allow this */
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2702,7 +4216,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The management key's role does not allow this */
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2791,7 +4305,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The management key's role does not allow this */
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2873,7 +4387,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The management key's role does not allow this */
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2952,7 +4466,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The management key's role does not allow this */
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3166,6 +4680,92 @@ export interface operations {
             };
         };
     };
+    readMeteredTrafficPerDayAndPerKey: {
+        parameters: {
+            query?: {
+                /** @description The project to report on */
+                project_id?: string;
+                /** @description First day, YYYY-MM-DD. Defaults to 30 days ago */
+                from?: string;
+                /** @description Last day, exclusive, YYYY-MM-DD. Defaults to tomorrow */
+                to?: string;
+                /** @description all, live or test */
+                scope?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The organization to report on */
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageOut"];
+                };
+            };
+            /** @description No usable management key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Only an admin key may read usage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No such resource in the key's organization */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request could not be validated. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description This deployment has no warehouse */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     listVisitorErasures: {
         parameters: {
             query?: never;
@@ -3337,7 +4937,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The management key's role does not allow this */
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3404,7 +5004,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The management key's role does not allow this */
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3480,7 +5080,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The management key's role does not allow this */
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3546,7 +5146,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The management key's role does not allow this */
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3624,7 +5224,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The management key's role does not allow this */
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3696,7 +5296,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The management key's role does not allow this */
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3771,7 +5371,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The management key's role does not allow this */
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3839,7 +5439,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The management key's role does not allow this */
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3904,7 +5504,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The management key's role does not allow this */
+            /** @description The management key's role does not allow this, or its organization is suspended or closed */
             403: {
                 headers: {
                     [name: string]: unknown;
