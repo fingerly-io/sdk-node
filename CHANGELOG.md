@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.5
+## 0.2.0
 
 - Events carry `project_id`, the Fingerly project an event belongs to, on
   `events.get` and every `events.list` row; it is absent when the server does
