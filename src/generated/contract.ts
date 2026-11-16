@@ -1175,6 +1175,20 @@ export interface components {
             /** @description admin or developer */
             role: string;
         };
+        PrivateAccessTokenIssuerIn: {
+            /** @description Instead of token_key: the issuer's HTTPS directory, read for its current type 2 keys */
+            directory_url?: string;
+            /** @description The issuer's server name, host and optional port. Defaults to the directory URL's host */
+            issuer_name?: string;
+            /** @description The issuer's token type 2 key, base64url: a DER SubjectPublicKeyInfo of a 2048-bit RSASSA-PSS key with SHA-384 */
+            token_key?: string;
+        };
+        PrivateAccessTokenIssuerOut: {
+            directory_url?: string;
+            issuer_name: string;
+            /** @description base64url, padded */
+            token_key?: string;
+        };
         ProjectArchivedOut: {
             archived: boolean;
             id: string;
@@ -1371,6 +1385,10 @@ export interface components {
             name: string;
             /** @description The human-readable stem, such as fly_pk_production */
             prefix: string;
+            /** @description Prototype: the project's token issuer, on the answer to an origins update */
+            private_access_token_issuer?: components["schemas"]["PrivateAccessTokenIssuerOut"] | null;
+            /** @description Prototype: whether a capable Safari is asked for a Private Access Token when the page requests a web ticket */
+            private_access_tokens: boolean;
             project_id: string;
             /** @description Whether native reports without verified hardware attestation are refused */
             require_attestation: boolean;
@@ -4387,6 +4405,10 @@ export interface operations {
                 "application/json": {
                     /** @description Scheme and host, no path. Empty refuses everything */
                     allowed_origins?: string[];
+                    /** @description Prototype: the token issuer of the key's whole project. Leave out to keep it; send an empty object to clear it */
+                    private_access_token_issuer?: components["schemas"]["PrivateAccessTokenIssuerIn"] | null;
+                    /** @description Prototype: ask Safari on iOS 16+ and macOS 13+ for a Private Access Token when the page requests a web ticket. Needs a public key in a project that names a token issuer. Leave out to keep the current setting */
+                    private_access_tokens?: boolean | null;
                     /**
                      * Format: int64
                      * @description Proof of work the key's web freshness tickets ask for, 0 (off) to 22 leading zero bits. Leave out to keep the current setting
