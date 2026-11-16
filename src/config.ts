@@ -87,7 +87,8 @@ const BARE_ORIGIN = /^https?:\/\/[^/\\?#@]+\/?$/i;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
 /**
- * Validates the proxy's upstream origin, which receives the proxy key.
+ * Validates an API origin that receives a key: the proxy's `upstream` or the
+ * client's `endpoint`.
  *
  * Only scheme, host and optional port are accepted. Plain HTTP is accepted
  * only when `allowInsecureLoopback` is set and the host is 127.0.0.1,
@@ -95,15 +96,16 @@ const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
  * echoed in the error, and the returned origin is rebuilt from the parsed
  * parts, never taken from the input string.
  *
+ * @param name The option name, used in the error message.
  * @returns The origin, such as `https://api.fingerly.io`.
  * @throws {TypeError} If the value is anything else.
  */
 export function normalizeApiOrigin(
   value: string,
   allowInsecureLoopback = false,
+  name: "upstream" | "endpoint" = "upstream",
 ): string {
-  const shape =
-    "upstream must be https://host or https://host:port, with no path, query, fragment or credentials";
+  const shape = `${name} must be https://host or https://host:port, with no path, query, fragment or credentials`;
   if (
     typeof value !== "string" ||
     !PRINTABLE.test(value) ||
@@ -133,7 +135,7 @@ export function normalizeApiOrigin(
   )
     return url.origin;
   throw new TypeError(
-    "upstream must use https; plain http is accepted only for 127.0.0.1, localhost or [::1] with allowInsecureLoopback",
+    `${name} must use https; plain http is accepted only for 127.0.0.1, localhost or [::1] with allowInsecureLoopback`,
   );
 }
 

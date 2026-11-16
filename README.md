@@ -23,8 +23,13 @@ Create the client once and reuse it. Event reads need a
 first request, not when the client is created, so a build that runs without
 secrets can still load the module; a public, proxy, malformed or missing key
 makes that request reject with a `TypeError` before any network access.
-Requests go to `https://api.fingerly.io`; `endpoint` overrides that for a local
-API, and `apiVersion` selects a route version (`v1` by default).
+Requests go to `https://api.fingerly.io`; `endpoint` overrides that, and
+`apiVersion` selects a route version (`v1` by default). `endpoint` must be a
+bare HTTPS origin, `https://host` or `https://host:port`: a path, query,
+fragment, credentials, whitespace or control byte throws when the client is
+created, and the error never repeats the value. Plain `http://` is refused,
+except for `127.0.0.1`, `localhost` or `[::1]` when you also pass
+`allowInsecureLoopback: true` for a local development API.
 
 A 404 from `get` carries one of two codes:
 

@@ -1,7 +1,7 @@
 import {
   DEFAULT_ENDPOINT,
+  normalizeApiOrigin,
   normalizeApiVersion,
-  normalizeOrigin,
   parseKey,
   positiveInt,
 } from "./config.js";
@@ -47,7 +47,16 @@ export class APITransport {
    *   before any network access when it is not a secret key.
    */
   constructor(options: FingerlyOptions) {
-    const origin = normalizeOrigin(options.endpoint ?? DEFAULT_ENDPOINT);
+    if (
+      options.allowInsecureLoopback !== undefined &&
+      typeof options.allowInsecureLoopback !== "boolean"
+    )
+      throw new TypeError("allowInsecureLoopback must be a boolean");
+    const origin = normalizeApiOrigin(
+      options.endpoint ?? DEFAULT_ENDPOINT,
+      options.allowInsecureLoopback === true,
+      "endpoint",
+    );
     const apiVersion = normalizeApiVersion(options.apiVersion);
 
     this.baseUrl = `${origin}/api/${apiVersion}`;

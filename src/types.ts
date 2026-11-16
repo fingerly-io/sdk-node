@@ -207,8 +207,18 @@ export interface FingerlyOptions {
   secretKey: string | undefined;
   /** API route version. Defaults to v1; the server must support it. */
   apiVersion?: string;
-  /** Overrides the Fingerly API origin, e.g. a local API. */
+  /**
+   * Overrides the Fingerly API origin: `https://host` or `https://host:port`,
+   * with no path, query, fragment, credentials, whitespace or control bytes.
+   * Anything else throws at construction.
+   */
   endpoint?: string;
+  /**
+   * Accepts a plain `http://` endpoint on 127.0.0.1, localhost or [::1], for a
+   * local development API. Off by default; plain HTTP to any other host is
+   * always refused, because the secret key would travel unencrypted.
+   */
+  allowInsecureLoopback?: boolean;
   /** Replacement `fetch`, for tests or a host with its own HTTP stack. */
   fetchImpl?: typeof fetch;
   /** Deadline per request, including reading the body. Defaults to 5000. */
