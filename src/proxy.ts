@@ -174,7 +174,7 @@ export class FingerlyProxy {
    *   before any forwarding.
    */
   readonly handle = (request: Request): Promise<Response> =>
-    this.forward(request, {});
+    this.forward(request, {}, request.method);
 
   /**
    * Handles one request from a Node server: Express, NestJS (Express or
@@ -193,7 +193,7 @@ export class FingerlyProxy {
     serveNode(
       {
         path: this.path,
-        forward: (request, peer) => this.forward(request, peer),
+        forward: (request, peer, method) => this.forward(request, peer, method),
         misconfigured: (problem, message) =>
           this.reportOnce(problem, { kind: "misconfigured", message }),
       },
@@ -207,8 +207,14 @@ export class FingerlyProxy {
    *
    * @param peer What the server knows about the TCP connection, passed to
    *   `clientIp`; empty where the framework does not expose it.
+   * @param method The method as it arrived. Fetch's `Request` uppercases
+   *   `post`, so the Node handler passes the raw one to keep the match exact.
    */
-  private async forward(request: Request, peer: ProxyPeer): Promise<Response> {
+  private async forward(
+    request: Request,
+    peer: ProxyPeer,
+    method: string,
+  ): Promise<Response> {
     const url = new URL(request.url);
     // Exactly the issued path: no prefix, no trailing or doubled slash, no
     // encoded characters, case-sensitive. Dot segments were already resolved
@@ -219,8 +225,9 @@ export class FingerlyProxy {
     const origin = (request.headers.get("origin") ?? "").trim();
     const cors =
       origin !== "" && this.allowedOrigins.has(origin) ? origin : null;
-    if (request.method === "OPTIONS" && cors !== null) return preflight(cors);
-    if (request.method !== "POST")
+    // Case-sensitive: `post` is not POST.
+    if (method === "OPTIONS" && cors !== null) return preflight(cors);
+    if (method !== "POST")
       return refuse(
         405,
         "Method Not Allowed",

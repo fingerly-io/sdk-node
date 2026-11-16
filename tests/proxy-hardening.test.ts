@@ -205,3 +205,117 @@ describe("statuses from upstream", () => {
     }
   });
 });
+
+describe("exact method and no-store answers", () => {
+  it.each(["GET", "PUT", "DELETE", "PATCH", "OPTIONS"])(
+    "answers %s with 405 no-store",
+    async (method) => {
+      const { fetchImpl } = capture();
+      const proxy = createProxy({ ...base, path: "/k7x2qm4a", fetchImpl });
+      const r = await proxy(post({ origin: "https://shop.test" }, method));
+      expect(r.status).toBe(405);
+      expect(r.headers.get("cache-control")).toBe("no-store");
+      expect(fetchImpl).not.toHaveBeenCalled();
+    },
+  );
+
+  it("answers a near-miss path with 404 no-store", async () => {
+    const { fetchImpl } = capture();
+    const proxy = createProxy({ ...base, path: "/k7x2qm4a", fetchImpl });
+    for (const path of ["/k7x2qm4a/", "/K7x2qm4a", "/k7x2qm4a/x", "/k7x2qm4"]) {
+      const r = await proxy(
+        new Request(`https://shop.test${path}`, {
+          method: "POST",
+          headers: { origin: "https://shop.test", "x-api-key": publicKey },
+          body: "{}",
+        }),
+      );
+      expect(r.status).toBe(404);
+      expect(r.headers.get("cache-control")).toBe("no-store");
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  describe("over a Node socket", () => {
+    let calls = 0;
+    let appPort = 0;
+    const fetchImpl: typeof fetch = async () => {
+      calls++;
+      return Response.json({ request_id: "one" });
+    };
+    const handler = createNodeProxy({ ...base, path: "/k7x2qm4a", fetchImpl });
+    const app = http.createServer((req, res) => {
+      // Stands in for a server in front that passes a method through as sent;
+      // Node's own parser refuses a lowercase one before any handler runs.
+      const asSent = /^\/as-sent\/([A-Za-z]+)$/.exec(req.url ?? "");
+      if (asSent)
+        Object.assign(req, { method: asSent[1], originalUrl: "/k7x2qm4a" });
+      void handler(req, res);
+    });
+
+    beforeAll(async () => {
+      appPort = await listen(app);
+    });
+    afterAll(() => app.close());
+
+    /** Sends a raw request and returns the whole answer. */
+    function rawRequest(method: string, path = "/k7x2qm4a"): Promise<string> {
+      return new Promise((resolve) => {
+        const socket = net.connect(appPort, "127.0.0.1");
+        let text = "";
+        socket.on("data", (chunk) => (text += chunk.toString("latin1")));
+        socket.on("close", () => resolve(text));
+        socket.on("error", () => resolve(text));
+        socket.write(
+          `${method} ${path} HTTP/1.1\r\nhost: shop.test\r\norigin: https://shop.test\r\n` +
+            `x-api-key: ${publicKey}\r\ncontent-type: application/json\r\n` +
+            `content-length: 2\r\nconnection: close\r\n\r\n{}`,
+        );
+      });
+    }
+
+    it.each(["post", "Post", "pOST"])(
+      "never forwards the method %j",
+      async (method) => {
+        calls = 0;
+        const answer = await rawRequest(method);
+        expect(calls).toBe(0);
+        const statusLine = answer.split("\r\n", 1)[0] ?? "";
+        // Node's parser may refuse the method itself (400); when it passes it
+        // through, the proxy answers 405 with no-store.
+        if (/^HTTP\/1\.1 405 /.test(statusLine))
+          expect(answer.toLowerCase()).toContain("cache-control: no-store");
+        else expect(statusLine).toMatch(/^HTTP\/1\.1 400 /);
+      },
+    );
+
+    it.each(["post", "Post", "pOST", "options"])(
+      "answers %j passed through by a front server with 405 no-store",
+      async (method) => {
+        calls = 0;
+        const answer = await rawRequest("POST", `/as-sent/${method}`);
+        expect(answer.split("\r\n", 1)[0]).toMatch(/^HTTP\/1\.1 405 /);
+        expect(answer.toLowerCase()).toContain("cache-control: no-store");
+        expect(calls).toBe(0);
+      },
+    );
+
+    it("forwards an exact POST", async () => {
+      calls = 0;
+      const answer = await rawRequest("POST");
+      expect(answer.split("\r\n", 1)[0]).toMatch(/^HTTP\/1\.1 200 /);
+      expect(calls).toBe(1);
+    });
+
+    it.each(["/k7x2qm4a/", "//k7x2qm4a", "/x/../k7x2qm4a", "/k7x2qm4%61"])(
+      "answers %j with 404 no-store",
+      async (path) => {
+        calls = 0;
+        const answer = await rawRequest("POST", path);
+        expect(answer.split("\r\n", 1)[0]).toMatch(/^HTTP\/1\.1 404 /);
+        expect(answer.toLowerCase()).toContain("cache-control: no-store");
+        expect(calls).toBe(0);
+      },
+    );
+  });
+});

@@ -189,7 +189,8 @@ requests. It answers:
 - **400** (`missing_origin`) when neither `Origin` nor a validated
   `X-Fingerly-SDK-Platform` header is present, **401** when the caller's public
   key is missing or for another environment, **405** for anything but `POST`
-  (and `OPTIONS` when `allowedOrigins` is configured), **413** for bodies over
+  (and `OPTIONS` when `allowedOrigins` is configured), compared case-sensitively
+  by the Node handler so `post` is refused, **413** for bodies over
   1 MiB (`maxBodyBytes`), all without calling upstream.
 - **504** when the exchange takes longer than `timeoutMs` (5000 by default),
   **502** when the upstream is unreachable, resets, or answers more than 4 MiB.

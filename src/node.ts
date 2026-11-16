@@ -17,8 +17,11 @@ const DRAIN_GRACE_MS = 2_000;
 export interface NodeTarget {
   /** The configured path, or null when the framework routes it. */
   path: string | null;
-  /** Forwards one Fetch request; never throws. */
-  forward(request: Request, peer: ProxyPeer): Promise<Response>;
+  /**
+   * Forwards one Fetch request; never throws. `method` is the method as it
+   * arrived, before Fetch's normalisation uppercases `post`.
+   */
+  forward(request: Request, peer: ProxyPeer, method: string): Promise<Response>;
   /** Reports a deployment mistake once per process. */
   misconfigured(problem: string, message: string): void;
 }
@@ -106,9 +109,11 @@ async function answer(
     return write(res, plain(400, "Bad Request"));
   }
 
-  const response = await target.forward(request, {
-    remoteAddress: req.socket?.remoteAddress,
-  });
+  const response = await target.forward(
+    request,
+    { remoteAddress: req.socket?.remoteAddress },
+    req.method ?? "GET",
+  );
   // A refused upload may still be arriving: discard the rest first, so the
   // visitor reads the answer instead of a reset connection.
   if (!(await drained(req))) res.setHeader("connection", "close");
