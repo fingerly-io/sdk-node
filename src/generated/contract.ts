@@ -59,6 +59,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/{request_id}/consume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark an event consumed, once
+         * @description Marks one identification event as consumed, atomically and once per organization, so a request ID handed from a page to your backend backs one decision only. The first call answers `200` with `first: true`; every later call answers `409 event_already_consumed`, with the first consume's time in the error's `details` entry for the field `consumed_at`. Read and check the event before you consume it. The flag is kept with the event and erased with it.
+         */
+        post: operations["markEventConsumedOnce"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/events/{request_id}/device-check": {
         parameters: {
             query?: never;
@@ -69,7 +89,7 @@ export interface paths {
         get?: never;
         /**
          * Set the device's DeviceCheck bits
-         * @description Spends the DeviceCheck token held for this iOS event, once, to set bit0, bit1 or both with Apple, using your project's own Apple key. A bit left out keeps its value. The bits mean what you decide; Fingerly never reads them. Apple answers a write with no previous value, and a token spent on a write cannot also read. Tokens are held for one hour, only for events whose App Attest evidence covered them, and only when DeviceCheck is switched on for the project's Apple credential. After a `503`, retry with the same bits: a token kept for a retry accepts only the request it was first used for.
+         * @description Spends the write DeviceCheck token held for this iOS event, once, to set bit0, bit1 or both with Apple, using your project's own Apple key. A bit left out keeps its value. The bits mean what you decide; Fingerly never reads them. Apple answers a write with no previous value; the event's read token, spent by the query route, is separate, so one identification supports one read and one write. Tokens are held for one hour, only for events whose App Attest evidence covered them, and only when DeviceCheck is switched on for the project's Apple credential. After a `503`, retry with the same bits: a token kept for a retry accepts only the request it was first used for.
          */
         put: operations["setDeviceDevicecheckBits"];
         post?: never;
@@ -90,7 +110,7 @@ export interface paths {
         put?: never;
         /**
          * Read the device's DeviceCheck bits
-         * @description Spends the DeviceCheck token held for this iOS event, once, to read the device's two bits from Apple. Apple asks for each token to be used once, so a token spent on a read cannot also write: to read and then mark a device, read on one identification and write on the next. After a `503`, retry the read: a token kept for a retry accepts only the request it was first used for.
+         * @description Spends the read DeviceCheck token held for this iOS event, once, to read the device's two bits from Apple. Apple asks for each token to be used once, so the event holds a second token for the write route: to read and then mark a device, read and write on the same identification. After a `503`, retry the read: a token kept for a retry accepts only the request it was first used for.
          */
         post: operations["readDeviceDevicecheckBits"];
         delete?: never;
@@ -861,8 +881,10 @@ export interface components {
             certificate_chain?: string[];
             /** @description Stateless server-signed challenge ticket */
             challenge: string;
-            /** @description Optional Base64 Apple DeviceCheck token bound into statementDigest */
+            /** @description Optional standard Base64 Apple DeviceCheck token, at most 4 KiB decoded, bound into statementDigest. Held for one hour and spent by POST /events/{request_id}/device-check/query */
             device_token?: string;
+            /** @description Optional second standard Base64 Apple DeviceCheck token, at most 4 KiB decoded, bound into statementDigest. Held for one hour and spent by PUT /events/{request_id}/device-check */
+            device_token_write?: string;
             /** @description Canonical 36-char lowercase UUIDv4 matching sources.identity.value.install_id */
             install_id: string;
             /** @description Base64 App Attest key ID (iOS) or 64-char hex SPKI SHA-256 (Android) */
@@ -892,6 +914,8 @@ export interface components {
             challenge: string;
             /** @description Whether to send a DeviceCheck token with the App Attest evidence */
             device_check?: boolean;
+            /** @description The project's 32-byte name digest salt, unpadded base64url. The SDK caches it per SDK key and sends each name digest as the first 16 bytes of HMAC-SHA256(salt, name) in hex, with digest_salt_id. Absent when the server has none to give; the SDK then uses 32 zero bytes */
+            digest_salt?: string;
             /**
              * Format: date-time
              * @description When the nonce becomes unusable
@@ -1039,6 +1063,8 @@ export interface components {
             attest_skipped?: string;
             /** @description The SDK's consent state; must be granted, or the request is refused with consent_required */
             consent?: string;
+            /** @description Empty for a report. ticket asks for a web freshness ticket instead: a public key on the web only, with a body of v, op and sdk, answered 200 with ticket and expires_at, never charged */
+            op?: string;
             /** @description Which SDK collected these signals */
             sdk?: components["schemas"]["SDKInfo"];
             /** @description The platform-specific signals the SDK collected */
@@ -1047,6 +1073,10 @@ export interface components {
             };
             /** @description An opaque value echoed back on the event and kept in long-lived rollups. A label for your own systems, such as a client or app name; never a personal identifier (user ID, email, install ID or advertising ID). A value holding a control character (U+0000 to U+001F, U+007F) is refused with invalid_request */
             tag?: string;
+            /** @description Web only: the freshness ticket from a ticket request or the previous answer's next_ticket. Single use, bound to the key and page origin, valid for 300 seconds. A native report carrying one is refused with invalid_request */
+            ticket?: string;
+            /** @description Web only, next to a ticket whose answer carried pow_bits: the smallest decimal nonce n, from 0 up, such that SHA-256(ticket || ':' || n) starts with at least pow_bits zero bits */
+            ticket_pow?: string;
             /**
              * Format: int64
              * @description Wire envelope version. Must equal 3.
@@ -1064,6 +1094,8 @@ export interface components {
             identifiable: boolean;
             /** @description Fresh attestation challenge ticket and dynamic offer flags for the next native submission */
             next_attestation?: components["schemas"]["AttestationChallengeOut"] | null;
+            /** @description Web only: a fresh freshness ticket for the next report from this page, so it needs no ticket request */
+            next_ticket?: components["schemas"]["WebTicketOut"] | null;
             /** @description Why enrichment did not happen. Only answered to a secret key; a browser or app reads it on the server-side event read */
             reason?: string;
             /** @description Identifies this submission */
@@ -1106,6 +1138,8 @@ export interface components {
             attest_skipped?: string;
             /** @description The SDK's consent state; must be granted, or the request is refused with consent_required */
             consent?: string;
+            /** @description Empty for a report. ticket asks for a web freshness ticket instead: a public key on the web only, with a body of v, op and sdk, answered 200 with ticket and expires_at, never charged */
+            op?: string;
             /** @description Which SDK collected these signals */
             sdk?: components["schemas"]["SDKInfo"];
             /** @description The platform-specific signals the SDK collected */
@@ -1114,6 +1148,10 @@ export interface components {
             };
             /** @description An opaque value echoed back on the event and kept in long-lived rollups; never a personal identifier. A value holding a control character (U+0000 to U+001F, U+007F) is refused with invalid_request */
             tag?: string;
+            /** @description Web only: the freshness ticket from a ticket request or the previous answer's next_ticket. A native report carrying one is refused with invalid_request */
+            ticket?: string;
+            /** @description Web only: the proof of work for a ticket whose answer carried pow_bits */
+            ticket_pow?: string;
             /**
              * Format: int64
              * @description Wire envelope version. Must equal 3.
@@ -1241,12 +1279,28 @@ export interface components {
                 [key: string]: number;
             };
         };
+        SDKEventConsumeOut: {
+            /**
+             * Format: date-time
+             * @description When it was consumed, RFC 3339
+             */
+            consumed_at: string;
+            /** @description Always true: a later consume is answered 409 event_already_consumed */
+            first: boolean;
+            /** @description The event consumed */
+            request_id: string;
+        };
         SDKEventOut: {
             agent?: string;
             agent_version?: string;
             anonymity_network?: string;
             asn?: string;
             asn_name?: string;
+            /**
+             * Format: date-time
+             * @description When the event was first consumed with POST /events/{request_id}/consume. Absent while it has not been
+             */
+            consumed_at?: string | null;
             country_code?: string;
             country_name?: string;
             device_kind?: string;
@@ -1325,6 +1379,11 @@ export interface components {
             revoked_by?: string;
             /** @description active or revoked */
             status: string;
+            /**
+             * Format: int64
+             * @description Proof of work, in leading zero bits, the key's web freshness tickets ask for; 0 is none
+             */
+            web_ticket_pow_bits: number;
         };
         SDKKeysOut: {
             keys: components["schemas"]["SDKKeyOut"][];
@@ -1443,6 +1502,20 @@ export interface components {
         };
         VisitorErasuresOut: {
             erasures: components["schemas"]["VisitorErasureOut"][];
+        };
+        WebTicketOut: {
+            /**
+             * Format: date-time
+             * @description When the ticket stops being accepted, RFC 3339 UTC
+             */
+            expires_at: string;
+            /**
+             * Format: int64
+             * @description Present when the key asks for proof of work: the leading zero bits ticket_pow must produce
+             */
+            pow_bits?: number;
+            /** @description Unpadded base64url ticket, sent as ticket on the next report */
+            ticket: string;
         };
         WebhookDeliveriesOut: {
             deliveries: components["schemas"]["WebhookDeliveryOut"][];
@@ -1702,6 +1775,91 @@ export interface operations {
             };
         };
     };
+    markEventConsumedOnce: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SDKEventConsumeOut"];
+                };
+            };
+            /** @description No usable secret SDK key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The organization is suspended or closed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `event_not_found`: no event with that request ID in this key's environment, or it is older than 30 days. `event_pending`: the identification is still being recorded; retry after the `Retry-After` seconds */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `event_already_consumed`: consumed before; `details[0]` is `{"field": "consumed_at", "issue": "<RFC 3339>"}` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request could not be validated. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `events_unavailable`: retry after the `Retry-After` seconds */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     setDeviceDevicecheckBits: {
         parameters: {
             query?: never;
@@ -1749,7 +1907,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description `device_check_not_held`: no token is held for that event */
+            /** @description `device_check_not_held`: no write token is held for that event */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -1834,7 +1992,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description `device_check_not_held`: no token is held for that event */
+            /** @description `device_check_not_held`: no read token is held for that event */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4229,6 +4387,11 @@ export interface operations {
                 "application/json": {
                     /** @description Scheme and host, no path. Empty refuses everything */
                     allowed_origins?: string[];
+                    /**
+                     * Format: int64
+                     * @description Proof of work the key's web freshness tickets ask for, 0 (off) to 22 leading zero bits. Leave out to keep the current setting
+                     */
+                    web_ticket_pow_bits?: number | null;
                 };
             };
         };
