@@ -241,7 +241,11 @@ export interface ProxyOptions {
   proxyKey: string | undefined;
   /** API route version forwarded upstream. Defaults to v1. */
   apiVersion?: string;
-  /** Overrides the upstream origin implied by the key. */
+  /**
+   * Overrides the upstream origin implied by the key: `https://host` or
+   * `https://host:port`, with no path, query, fragment, credentials,
+   * whitespace or control bytes. Anything else throws at construction.
+   */
   upstream?: string;
   /**
    * Accepts a plain `http://` upstream on 127.0.0.1, localhost or [::1], for a

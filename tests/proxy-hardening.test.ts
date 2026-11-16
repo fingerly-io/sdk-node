@@ -319,3 +319,89 @@ describe("exact method and no-store answers", () => {
     );
   });
 });
+
+describe("upstream shape", () => {
+  it.each([
+    "https://upstream.invalid/prefix",
+    "https://upstream.invalid/a/../b",
+    "https://upstream.invalid/..",
+    "https://upstream.invalid\n",
+    "https://upstream.invalid ",
+    " https://upstream.invalid",
+    "https://upstream.invalid\r\nx-injected: 1",
+    "https://upstream.invalid\t",
+    "https://upstream.invalid?",
+    "https://upstream.invalid/?x=1",
+    "https://upstream.invalid#",
+    "https://upstream.invalid#frag",
+    "https://user:pass@upstream.invalid",
+    "https://upstream.invalid\\",
+    "https://upstream.invalid\\@evil.invalid",
+    "https:upstream.invalid",
+    "ftp://upstream.invalid",
+    "file:///private",
+    "",
+  ])("refuses %j without naming it", (upstream) => {
+    let error: unknown;
+    try {
+      new FingerlyProxy({ ...base, upstream });
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(TypeError);
+    expect((error as Error).message).not.toContain("upstream.invalid");
+  });
+
+  it.each([
+    ["https://upstream.invalid", "https://upstream.invalid/api/v1/ingest"],
+    ["https://upstream.invalid/", "https://upstream.invalid/api/v1/ingest"],
+    [
+      "https://UPSTREAM.invalid:8443",
+      "https://upstream.invalid:8443/api/v1/ingest",
+    ],
+    ["https://upstream.invalid:443", "https://upstream.invalid/api/v1/ingest"],
+  ])("accepts %j as a bare origin", (upstream, target) => {
+    const proxy = new FingerlyProxy({ ...base, upstream });
+    expect(proxy.toJSON().upstreamUrl).toBe(target);
+  });
+});
+
+describe("failure lines", () => {
+  it("name neither the upstream nor the key when it is unreachable", async () => {
+    const lines: string[] = [];
+    const proxy = createProxy({
+      ...base,
+      upstream: "http://127.0.0.1:1",
+      allowInsecureLoopback: true,
+      onError: (failure) => lines.push(failure.message),
+    });
+    const r = await proxy(post({ origin: "https://shop.test" }));
+    expect(r.status).toBe(502);
+    expect(await r.text()).toBe("Bad gateway");
+    expect(lines).toHaveLength(1);
+    for (const text of lines) {
+      expect(text).not.toContain("127.0.0.1");
+      expect(text).not.toContain("ingest");
+      expect(text).not.toContain(proxyKey);
+    }
+  });
+
+  it("never copies an error message that carries the URL", async () => {
+    const lines: string[] = [];
+    const proxy = createProxy({
+      ...base,
+      upstream: "https://upstream.invalid",
+      onError: (failure) => lines.push(failure.message),
+      fetchImpl: async () => {
+        throw Object.assign(
+          new TypeError(
+            "request to https://upstream.invalid/api/v1/ingest failed",
+          ),
+          { cause: new Error("connect to upstream.invalid:443 refused") },
+        );
+      },
+    });
+    await proxy(post({ origin: "https://shop.test" }));
+    expect(lines).toEqual(["upstream request failed: other"]);
+  });
+});

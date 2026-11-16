@@ -174,6 +174,9 @@ before they are relayed:
   replacement `fetchImpl` followed to another URL, is answered **502**. A
   `fetchImpl` you supply must honour `redirect: "manual"`.
 - An upstream status outside 200 to 599 is answered **502**.
+- `upstream` must be a bare origin, `https://host` or `https://host:port`: a
+  path, query, fragment, credentials, whitespace or control byte throws, and
+  the error never repeats the value.
 
 It relays back only `content-type`, `x-request-id`, `ratelimit-limit`,
 `ratelimit-remaining` and `retry-after`, so nothing on the response names
@@ -196,7 +199,9 @@ requests. It answers:
   **502** when the upstream is unreachable, resets, or answers more than 4 MiB.
   The handler never throws, so your framework never turns an outage into a 500
   with a stack trace. Each failure is one line on `console.error`, or passed
-  to `onError` if you give one.
+  to `onError` if you give one. The line names the kind of failure only
+  (`connect`, `tls`, `redirect`, `status`, `too_large` or `other`), never the
+  upstream host, URL or key.
 - **500** with a one-line message when the proxy is misconfigured: the proxy
   key is missing or invalid, or `clientIp` returned anything but one IP
   address. This is logged once per process, not per request.

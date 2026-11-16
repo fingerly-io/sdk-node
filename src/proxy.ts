@@ -550,22 +550,42 @@ class UpstreamUnusable extends Error {
 /** Configuration problems already reported by this process. */
 const reported = new Set<string>();
 
+/** Error codes that only say a connection could not be made or kept. */
+const CONNECT_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "EPIPE",
+  "UND_ERR_SOCKET",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
+
 /**
- * A one-line description of a transport failure, without stack or body:
- * `fetch failed (ECONNREFUSED)` rather than the error object.
+ * A one-line description of a failure that names only its kind, such as
+ * `upstream request failed: connect (ECONNREFUSED)`. Error messages are never
+ * copied: they can carry the upstream host, port or URL.
  */
 function describe(error: unknown): string {
-  if (error instanceof UpstreamResponseTooLarge) return error.message;
-  if (!(error instanceof Error)) return "upstream request failed";
-  const cause = (error as { cause?: { code?: unknown; message?: unknown } })
-    .cause;
-  const detail =
-    typeof cause?.code === "string"
+  if (error instanceof UpstreamResponseTooLarge)
+    return "upstream request failed: too_large";
+  if (error instanceof UpstreamUnusable)
+    return `upstream request failed: ${error.reason}`;
+  const cause = (error as { cause?: { code?: unknown } } | null)?.cause;
+  const code =
+    typeof cause?.code === "string" && /^[A-Z0-9_]{1,40}$/.test(cause.code)
       ? cause.code
-      : typeof cause?.message === "string"
-        ? cause.message
-        : "";
-  return `upstream request failed: ${error.message}${detail ? ` (${detail})` : ""}`;
+      : "";
+  const kind = CONNECT_CODES.has(code)
+    ? "connect"
+    : /^(ERR_TLS|ERR_SSL|CERT_|UNABLE_TO|SELF_SIGNED|DEPTH_ZERO|HOSTNAME_MISMATCH)/.test(
+          code,
+        )
+      ? "tls"
+      : "other";
+  return `upstream request failed: ${kind}${code ? ` (${code})` : ""}`;
 }
 
 /** Validates configured cross-origin browser origins. */
