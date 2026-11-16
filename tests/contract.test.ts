@@ -5,8 +5,11 @@ import addFormats from "ajv-formats";
 import {
   load,
   verifyWebhook,
+  type Attestation,
   type Event,
+  type EventDocument,
   type EventPage,
+  type SignalName,
 } from "../src/index.js";
 const spec = JSON.parse(
   readFileSync(new URL("../contract/openapi.json", import.meta.url), "utf8"),
@@ -65,5 +68,79 @@ describe("server-owned contract fixtures", () => {
         now: new Date((Number(fixture.timestamp) + 301) * 1000),
       }),
     ).toBe(false);
+  });
+  it("matches the v3 OpenAPI contract and decodes v3 signals, attestation, and empty visitor_id", async () => {
+    expect(
+      spec.paths["/api/v1/events/{request_id}/supplement"],
+    ).toBeUndefined();
+    expect(spec.components.schemas.SupplementOut).toBeUndefined();
+    expect(spec.components.schemas.AttestEnvelope).toBeDefined();
+
+    const v3Signals: SignalName[] = [
+      "attestation_failed",
+      "device_inconsistent",
+      "report_incomplete",
+      "tampering",
+      "custom_root_ca",
+      "secondary_user_profile",
+    ];
+    const attestation: Attestation = {
+      state: "attested",
+      platform: "android",
+      status: "verified",
+      attestation_security_level: "strongbox",
+      revocation_checked: true,
+      package_bound: true,
+      signer_bound: true,
+    };
+    const document: EventDocument = {
+      schema: 1,
+      request_id: "0199a963-e400-7000-8000-000000000099",
+      occurred_at: "2026-09-17T12:00:00Z",
+      sdk: { platform: "android", version: "0.3.0" },
+      ip_network: "203.0.113.0/24",
+      risk: {
+        platform: "android",
+        score: 25,
+        level: "high",
+        threshold: 20,
+        source: "default",
+        triggers: v3Signals.map((signal) => ({ signal, weight: 4 })),
+      },
+      attestation,
+    };
+    const payload: Event = {
+      request_id: "0199a963-e400-7000-8000-000000000099",
+      project_id: "0199a963-e400-7000-8000-0000000000a1",
+      visitor_id: "",
+      occurred_at: "2026-09-17T12:00:00Z",
+      state: "enriched",
+      environment: "development",
+      platform: "android",
+      sdk_platform: "android",
+      sdk_version: "0.3.0",
+      suspect_score: 25,
+      suspect_level: "high",
+      triggers: v3Signals.map((signal) => ({
+        signal,
+        weight: 4,
+        confidence: "high",
+      })),
+      has_document: true,
+      document,
+    };
+    const validate = ajv.compile({
+      $ref: "fingerly#/components/schemas/SDKEventOut",
+    });
+    expect(validate(payload), JSON.stringify(validate.errors)).toBe(true);
+
+    const client = load({
+      secretKey: "fly_sk_development_contract",
+      fetchImpl: async () => Response.json(payload),
+    });
+    const decoded = await client.events.get(payload.request_id);
+    expect(decoded.visitor_id).toBe("");
+    expect(decoded.triggers.map((t) => t.signal)).toEqual(v3Signals);
+    expect(decoded.document?.attestation?.status).toBe("verified");
   });
 });

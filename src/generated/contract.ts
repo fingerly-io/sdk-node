@@ -99,26 +99,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/events/{request_id}/supplement": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Submit a deferred report
-         * @description Attaches the signals a browser collects after its initial budget to an identification that has already been answered. It never changes the visitor, the score, billing or webhooks. The JavaScript SDK sends it automatically. Resending the same report is answered as a duplicate.
-         */
-        post: operations["submitDeferredReport"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/identify": {
         parameters: {
             query?: never;
@@ -156,9 +136,9 @@ export interface paths {
         put?: never;
         /**
          * Submit from a client SDK
-         * @description The one URL the client SDKs and every first-party proxy post to. A body with a `token` is a deferred report and is answered `202` with `request_id` and `duplicate`, exactly as the deferred report route answers. Any other body is an identification and is answered `200` exactly as the identify route answers.
+         * @description The one URL the client SDKs and every first-party proxy post to. Forwards the single-pass v3 identification envelope and answers `200` with the verdict, exactly as the identify route answers.
          *
-         *     It exists so a proxy can forward everything it receives to a single path, and so the SDK can post both calls to one path of the customer's choosing, with nothing appended that a content blocker could match across sites.
+         *     It exists so a proxy can forward everything it receives to a single path of the customer's choosing, with nothing appended that a content blocker could match across sites. An `Idempotency-Key` header is required on every call.
          *
          *     The `X-Request-Id` response header names this HTTP exchange, for support and logs. It is not the `request_id` in the body, which names the identification and is what `GET /events/{request_id}` reads.
          */
@@ -872,6 +852,37 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AttestEnvelope: {
+            /** @description Base64 CBOR App Attest assertion object */
+            assertion?: string;
+            /** @description Base64 CBOR App Attest attestation object */
+            attestation_object?: string;
+            /** @description Base64 DER X.509 certificate chain for Android key registration */
+            certificate_chain?: string[];
+            /** @description Stateless server-signed challenge ticket */
+            challenge: string;
+            /** @description Optional Base64 Apple DeviceCheck token bound into statementDigest */
+            device_token?: string;
+            /** @description Canonical 36-char lowercase UUIDv4 matching sources.identity.value.install_id */
+            install_id: string;
+            /** @description Base64 App Attest key ID (iOS) or 64-char hex SPKI SHA-256 (Android) */
+            key_id?: string;
+            /** @description app_attest_register, app_attest_assert, android_key_register, or android_key_assert */
+            mode: string;
+            /** @description Optional Google Play Integrity token with requestHash equal to hex(statementDigest) */
+            play_integrity_token?: string;
+            /** @description Optional retiring 64-char hex Android key ID during 24h lease rollover */
+            prev_key_id?: string;
+            /** @description Optional Base64 ASN.1 DER signature by retiring Android key over identical framedPreimage */
+            prev_signature?: string;
+            /**
+             * Format: int64
+             * @description Inline Android lease renewal attempt counter (0 or 1)
+             */
+            reattest_attempt?: number;
+            /** @description Base64 ASN.1 DER SHA256withECDSA signature over framedPreimage */
+            signature?: string;
+        };
         AttestationChallengeOut: {
             /** @description Whether this key has an Apple app ID configured for App Attest */
             app_attest?: boolean;
@@ -1020,6 +1031,8 @@ export interface components {
             target?: string;
         };
         IdentifyIn: {
+            /** @description Hardware attestation envelope bound to raw signals bytes (v3 native SDKs) */
+            attest?: components["schemas"]["AttestEnvelope"] | null;
             /** @description The SDK's consent state; must be granted, or the request is refused with consent_required */
             consent?: string;
             /** @description Which SDK collected these signals */
@@ -1030,16 +1043,21 @@ export interface components {
             };
             /** @description An opaque value echoed back on the event and kept in long-lived rollups. A label for your own systems, such as a client or app name; never a personal identifier (user ID, email, install ID or advertising ID) */
             tag?: string;
+            /**
+             * Format: int64
+             * @description Wire envelope version. Must equal 3.
+             */
+            v?: number;
         };
         IdentifyOut: {
-            /** @description unknown when the report asserted with an App Attest key the server does not hold; the iOS SDK then attests a new key on its next collection. Absent otherwise */
-            app_attest_key?: string;
-            /** @description Short-lived capability for the deferred signal report */
-            deferred_token?: string;
-            /** @description This submission was answered before; the verdict belongs to the first one */
+            /** @description rekey_required when the presented v3 attestation key is unknown or expired */
+            attest_key_status?: string;
+            /** @description This submission was answered before; the verdict replays the first one */
             duplicate?: boolean;
             /** @description False when the report carried too little to identify anyone */
             identifiable: boolean;
+            /** @description Fresh attestation challenge ticket and dynamic offer flags for the next native submission */
+            next_attestation?: components["schemas"]["AttestationChallengeOut"] | null;
             /** @description Why enrichment did not happen. Only answered to a secret key; a browser or app reads it on the server-side event read */
             reason?: string;
             /** @description Identifies this submission */
@@ -1060,7 +1078,7 @@ export interface components {
              * @description How sure we are about visitor_id, 0 to 100
              */
             visitor_confidence: number;
-            /** @description Who this visitor is, stable across their visits */
+            /** @description Who this visitor is, stable across their visits; empty when unidentifiable */
             visitor_id: string;
             /** @description Whether this is the first time this visitor has been seen */
             visitor_is_new: boolean;
@@ -1076,6 +1094,8 @@ export interface components {
             weight?: number | null;
         };
         IngestIn: {
+            /** @description Hardware attestation envelope bound to raw signals bytes (v3 native SDKs) */
+            attest?: components["schemas"]["AttestEnvelope"] | null;
             /** @description The SDK's consent state; must be granted, or the request is refused with consent_required */
             consent?: string;
             /** @description Which SDK collected these signals */
@@ -1084,10 +1104,13 @@ export interface components {
             signals?: {
                 [key: string]: unknown;
             };
-            /** @description An opaque value echoed back on the event and kept in long-lived rollups; never a personal identifier. Identify only */
+            /** @description An opaque value echoed back on the event and kept in long-lived rollups; never a personal identifier */
             tag?: string;
-            /** @description The deferred_token returned by identify. Present only on a deferred report */
-            token?: string;
+            /**
+             * Format: int64
+             * @description Wire envelope version. Must equal 3.
+             */
+            v?: number;
         };
         IssuedProxyCredentialOut: {
             credential: components["schemas"]["ProxyCredentialOut"];
@@ -1323,11 +1346,6 @@ export interface components {
             weights: {
                 [key: string]: number;
             };
-        };
-        SupplementOut: {
-            /** @description The identical supplement was accepted before */
-            duplicate?: boolean;
-            request_id: string;
         };
         UsageDayOut: {
             /**
@@ -1855,97 +1873,6 @@ export interface operations {
             };
         };
     };
-    submitDeferredReport: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                request_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** @description The SDK's consent state; must be granted, or the request is refused with consent_required */
-                    consent?: string;
-                    /** @description Which SDK collected these signals */
-                    sdk?: components["schemas"]["SDKInfo"];
-                    /** @description A report containing only the deferred tier */
-                    signals?: {
-                        [key: string]: unknown;
-                    };
-                    /** @description The deferred_token returned by identify */
-                    token?: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Accepted */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SupplementOut"];
-                };
-            };
-            /** @description No usable x-api-key header was presented */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description The organization this key belongs to is not accepting traffic */
-            402: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description A different deferred report was already accepted for this request */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description The request could not be validated. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description The report could not be accepted just now */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description An unexpected error occurred. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
     identifyVisitor: {
         parameters: {
             query?: never;
@@ -1979,6 +1906,15 @@ export interface operations {
             };
             /** @description The organization this key belongs to is not accepting traffic */
             402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The Idempotency-Key was reused with a different payload, or the original request is still in progress */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2055,15 +1991,6 @@ export interface operations {
                     "application/json": components["schemas"]["IdentifyOut"];
                 };
             };
-            /** @description The deferred report was accepted */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description No usable x-api-key header was presented */
             401: {
                 headers: {
@@ -2075,6 +2002,15 @@ export interface operations {
             };
             /** @description The organization this key belongs to is not accepting traffic */
             402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The Idempotency-Key was reused with a different payload, or the original request is still in progress */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4003,7 +3939,7 @@ export interface operations {
                 "application/json": {
                     /** @description Android package names, such as com.example.app */
                     allowed_android_packages?: string[];
-                    /** @description SHA-256 signing certificate digests, 64 hex characters */
+                    /** @description SHA-256 signing certificate digests, 64 hex characters (colon separators accepted). Required alongside allowed_android_packages in production or when require_attestation is true */
                     allowed_android_signers?: string[];
                     /** @description Apple app IDs: Team ID, a dot, then the bundle identifier */
                     allowed_apple_app_ids?: string[];
@@ -4019,6 +3955,8 @@ export interface operations {
                     kind?: string;
                     /** @description What the key is called. The only part a person can recognise once the secret is masked */
                     name?: string;
+                    /** @description Refuse native reports whose hardware attestation did not verify */
+                    require_attestation?: boolean | null;
                 };
             };
         };
@@ -4099,7 +4037,7 @@ export interface operations {
                 "application/json": {
                     /** @description Android package names, such as com.example.app. Empty means not configured */
                     allowed_android_packages?: string[];
-                    /** @description SHA-256 signing certificate digests, 64 hex characters. Empty means not configured */
+                    /** @description SHA-256 signing certificate digests, 64 hex characters (colon separators accepted). Required alongside allowed_android_packages in production or when require_attestation is true */
                     allowed_android_signers?: string[];
                     /** @description Apple app IDs: Team ID, a dot, then the bundle identifier. Empty means not configured */
                     allowed_apple_app_ids?: string[];

@@ -10,8 +10,11 @@ import {
 import { parseRetryAfter } from "../src/transport.js";
 const key = "fly_sk_development_test";
 const proxyKey = "fly_px_development_test";
-/** The browser's public key, which the proxy forwards beside its own. */
-const browserKey = { "x-api-key": "fly_pk_development_test" };
+/** The browser's public key and page origin, forwarded beside the proxy key. */
+const browserKey = {
+  "x-api-key": "fly_pk_development_test",
+  origin: "https://shop.test",
+};
 const missing = () =>
   Response.json(
     {
@@ -541,6 +544,8 @@ describe("proxy boundary", () => {
       "/k7x2qm4a//",
       "//k7x2qm4a",
       "/k7x2qm4a/x",
+      "/k7x2qm4a/supplement",
+      "/k7x2qm4a/events/req_1/supplement",
       "/k7x2qm4ax",
       "/K7X2QM4A",
       "/k7x2qm4%61",
@@ -577,6 +582,202 @@ describe("proxy boundary", () => {
     expect(String(errors.mock.calls[0]?.[0])).not.toContain("\n");
     expect(String(errors.mock.calls[0]?.[0])).not.toContain(key);
     errors.mockRestore();
+  });
+
+  it("enforces sanitize-and-restore, missing_origin gate, header allowlist, CORS, and verbatim raw bytes", async () => {
+    const seen: { headers: Headers; rawBody: string }[] = [];
+    const fetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      const body = init?.body as Buffer | Uint8Array | undefined;
+      seen.push({
+        headers: new Headers(init?.headers),
+        rawBody: body ? Buffer.from(body).toString("utf8") : "",
+      });
+      return new Response('{"request_id":"v3_ok"}', {
+        status: 409,
+        headers: {
+          "content-type": "application/json",
+          "x-request-id": "req-409",
+          "ratelimit-limit": "50",
+          "ratelimit-remaining": "49",
+          "retry-after": "1",
+          "fingerly-balance-micros": "999",
+          "fingerly-ratelimit-scope": "org",
+        },
+      });
+    });
+    const proxy = createProxy({
+      proxyKey,
+      path: "/k7x2qm4a",
+      allowedOrigins: ["https://app.shop.test"],
+      clientIp: () => "203.0.113.42",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    // 1. Originless browser POST -> 400 missing_origin (never synthesizes x-fingerly-origin).
+    const noOrigin = await proxy(
+      new Request("https://shop.test/k7x2qm4a", {
+        method: "POST",
+        headers: {
+          "x-api-key": "fly_pk_development_test",
+          host: "shop.test",
+          referer: "https://shop.test/checkout",
+        },
+        body: "{}",
+      }),
+    );
+    expect(noOrigin.status).toBe(400);
+    expect(noOrigin.headers.get("cache-control")).toBe("no-store");
+    expect(await noOrigin.json()).toMatchObject({
+      error: { code: "missing_origin", status: 400 },
+    });
+    expect(seen).toHaveLength(0);
+
+    // 2. Invalid x-fingerly-sdk-platform values without Origin are discarded -> 400.
+    for (const invalidPlatform of [
+      "",
+      "web",
+      "iOS",
+      "ANDROID",
+      "ios/1",
+      "ios, android",
+      "unknown",
+    ]) {
+      const r = await proxy(
+        new Request("https://shop.test/k7x2qm4a", {
+          method: "POST",
+          headers: {
+            "x-api-key": "fly_pk_development_test",
+            "x-fingerly-sdk-platform": invalidPlatform,
+            "x-fingerly-origin": "https://forged.test",
+            "x-fingerly-proxy-key": "fly_px_development_forged",
+            "x-fingerly-client-ip": "1.2.3.4",
+          },
+          body: "{}",
+        }),
+      );
+      expect(r.status, invalidPlatform).toBe(400);
+      expect(r.headers.get("cache-control")).toBe("no-store");
+    }
+    expect(seen).toHaveLength(0);
+
+    // 3. All 12 valid native/bridge platforms without Origin forward with NO x-fingerly-origin.
+    const validPlatforms = [
+      "ios",
+      "android",
+      "react-native",
+      "react-native-ios",
+      "react-native-android",
+      "flutter",
+      "flutter-ios",
+      "flutter-android",
+      "lynx-ios",
+      "lynx-android",
+      "capacitor",
+      "kotlin-multiplatform",
+    ];
+    const rawPayload = '{"v":3,"signals":{"latency":142.50,"sci":1e-05}}';
+    for (const platform of validPlatforms) {
+      const r = await proxy(
+        new Request("https://shop.test/k7x2qm4a", {
+          method: "POST",
+          headers: {
+            "x-api-key": "fly_pk_development_test",
+            "X-Fingerly-SDK-Platform": platform,
+            "idempotency-key": "idem-native-v3-0001",
+            "x-fingerly-origin": "https://forged.test",
+            "x-fingerly-proxy-key": "fly_px_development_forged",
+            "x-fingerly-client-ip": "1.2.3.4",
+            "x-fingerly-edge-tls-version": "TLSv1.3",
+            cookie: "sid=secret",
+            authorization: "Bearer secret",
+          },
+          body: rawPayload,
+        }),
+      );
+      expect(r.status, platform).toBe(409);
+      expect(r.headers.get("retry-after")).toBe("1");
+      expect(r.headers.get("cache-control")).toBe("no-store");
+      const last = seen[seen.length - 1]!;
+      expect(last.rawBody).toBe(rawPayload);
+      expect(last.headers.get("x-fingerly-sdk-platform")).toBe(platform);
+      expect(last.headers.get("x-fingerly-origin")).toBeNull();
+      expect(last.headers.get("x-fingerly-proxy-key")).toBe(proxyKey);
+      expect(last.headers.get("x-fingerly-client-ip")).toBe("203.0.113.42");
+      expect(last.headers.get("x-fingerly-edge-tls-version")).toBeNull();
+      expect(last.headers.get("idempotency-key")).toBe("idem-native-v3-0001");
+      expect(last.headers.get("cookie")).toBeNull();
+      expect(last.headers.get("authorization")).toBeNull();
+    }
+
+    // 4. Browser request forwards Sec-Fetch-*, Sec-CH-UA-*, strips forged x-fingerly-*, and honours CORS.
+    const preflightRes = await proxy(
+      new Request("https://shop.test/k7x2qm4a", {
+        method: "OPTIONS",
+        headers: { origin: "https://app.shop.test" },
+      }),
+    );
+    expect(preflightRes.status).toBe(204);
+    expect(preflightRes.headers.get("access-control-allow-origin")).toBe(
+      "https://app.shop.test",
+    );
+    expect(preflightRes.headers.get("access-control-allow-headers")).toContain(
+      "x-fingerly-sdk-platform",
+    );
+    expect(preflightRes.headers.get("access-control-expose-headers")).toContain(
+      "retry-after",
+    );
+
+    const browserRes = await proxy(
+      new Request("https://shop.test/k7x2qm4a", {
+        method: "POST",
+        headers: {
+          "x-api-key": "fly_pk_development_test",
+          origin: "https://app.shop.test",
+          "idempotency-key": "idem-web-v3-00001",
+          "sec-fetch-site": "same-site",
+          "sec-fetch-mode": "cors",
+          "sec-fetch-dest": "empty",
+          "sec-ch-ua": '"Chromium";v="130"',
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": '"macOS"',
+          "x-fingerly-sdk-platform": "web",
+          "x-fingerly-client-ip": "9.9.9.9",
+        },
+        body: rawPayload,
+      }),
+    );
+    expect(browserRes.status).toBe(409);
+    expect(browserRes.headers.get("retry-after")).toBe("1");
+    expect(browserRes.headers.get("access-control-allow-origin")).toBe(
+      "https://app.shop.test",
+    );
+    expect(browserRes.headers.get("access-control-expose-headers")).toContain(
+      "retry-after",
+    );
+    const forwarded = seen[seen.length - 1]!;
+    expect(forwarded.rawBody).toBe(rawPayload);
+    expect(forwarded.headers.get("x-fingerly-origin")).toBe(
+      "https://app.shop.test",
+    );
+    expect(forwarded.headers.get("x-fingerly-sdk-platform")).toBeNull();
+    expect(forwarded.headers.get("x-fingerly-client-ip")).toBe("203.0.113.42");
+    expect(forwarded.headers.get("sec-fetch-site")).toBe("same-site");
+    expect(forwarded.headers.get("sec-fetch-mode")).toBe("cors");
+    expect(forwarded.headers.get("sec-fetch-dest")).toBe("empty");
+    expect(forwarded.headers.get("sec-ch-ua")).toBe('"Chromium";v="130"');
+    expect(forwarded.headers.get("sec-ch-ua-mobile")).toBe("?0");
+    expect(forwarded.headers.get("sec-ch-ua-platform")).toBe('"macOS"');
+
+    // 5. Subpaths (/supplement) return 404 with Cache-Control: no-store.
+    const supplement = await proxy(
+      new Request("https://shop.test/k7x2qm4a/supplement", {
+        method: "POST",
+        headers: browserKey,
+        body: rawPayload,
+      }),
+    );
+    expect(supplement.status).toBe(404);
+    expect(supplement.headers.get("cache-control")).toBe("no-store");
   });
 });
 

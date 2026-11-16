@@ -1,27 +1,177 @@
 import type { components } from "./generated/contract.js";
 
+/**
+ * Signal group and raw detector identifiers reported in event triggers and
+ * archived risk reports, with open string compatibility for future server
+ * additions.
+ */
+export type SignalName =
+  | "tor"
+  | "datacenter_proxy"
+  | "proxy"
+  | "datacenter_ip"
+  | "residential_proxy"
+  | "residential_proxy_low_confidence"
+  | "residential_proxy_medium_confidence"
+  | "residential_proxy_high_confidence"
+  | "vpn"
+  | "vpn_public"
+  | "vpn_timezone"
+  | "vpn_relay"
+  | "vpn_mobile"
+  | "vpn_os_mismatch"
+  | "vpn_low_confidence"
+  | "vpn_medium_confidence"
+  | "vpn_high_confidence"
+  | "ip_blocklist"
+  | "ip_blocklist_email_spam"
+  | "ip_blocklist_attack_source"
+  | "ip_reputation"
+  | "ip_abuser"
+  | "network_anomaly"
+  | "bogon_ip"
+  | "anycast_ip"
+  | "location_spoofing"
+  | "geo_mismatch"
+  | "ios_simulator"
+  | "simulator"
+  | "android_emulator"
+  | "emulator"
+  | "virtual_machine"
+  | "jailbroken_device"
+  | "jailbreak"
+  | "rooted_device"
+  | "root_apps"
+  | "play_device_integrity_failed"
+  | "cloned_app"
+  | "app_cloner"
+  | "play_app_unrecognized"
+  | "device_farm"
+  | "app_attest_key_churn"
+  | "mitm_attack"
+  | "frida_detected"
+  | "frida"
+  | "browser_tampering"
+  | "tampering"
+  | "antidetect_browser"
+  | "fingerprint_suppressed"
+  | "developer_tools"
+  | "remote_control"
+  | "bot"
+  | "automation"
+  | "bad_bot"
+  | "high_activity"
+  | "incognito_mode"
+  | "incognito"
+  | "privacy_settings"
+  | "embedded_web_view"
+  | "active_call"
+  | "attestation_missing"
+  | "attestation_failed"
+  | "device_inconsistent"
+  | "report_incomplete"
+  | "custom_root_ca"
+  | "secondary_user_profile"
+  | (string & {});
+
+/** Top-level hardware attestation verdict on native events. */
+export type AttestationState =
+  "attested" | "not_attested" | "failed" | (string & {});
+
+/** Platform-neutral hardware attestation verification status. */
+export type AttestationStatus =
+  | "verified"
+  | "indeterminate"
+  | "invalid"
+  | "absent"
+  | "unconfigured"
+  | (string & {});
+
+/** Platform-neutral hardware attestation verdict inside an archived document. */
+export interface Attestation {
+  state: AttestationState;
+  platform?: string;
+  status: AttestationStatus;
+  reason?: string;
+  chain_length?: number;
+  attestation_security_level?: string;
+  keymint_security_level?: string;
+  device_locked?: boolean;
+  verified_boot_state?: string;
+  nonce?: string;
+  revocation_checked?: boolean;
+  package_bound?: boolean;
+  signer_bound?: boolean;
+  mode?: string;
+  app_id?: string;
+  environment?: string;
+  receipt?: string;
+  risk_metric?: number;
+  risk_metric_age_h?: number;
+  device_check?: string;
+  play_integrity?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/** Allow-listed view of an archived identification submission. */
+export interface EventDocument {
+  schema: number;
+  request_id: string;
+  occurred_at: string;
+  sdk: {
+    platform: string;
+    version: string;
+  };
+  ip_network?: string;
+  ip?: Record<string, unknown>;
+  ip_error?: string;
+  risk?: {
+    platform: string;
+    score: number;
+    level: string;
+    threshold: number;
+    source: string;
+    revision?: number;
+    triggers: Array<{
+      signal: SignalName;
+      weight: number;
+      confidence?: string;
+      reason?: string;
+    }>;
+  };
+  attestation?: Attestation;
+  velocity?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 /** One signal that contributed to an event's suspect score. */
-export type EventTrigger = components["schemas"]["EventTriggerOut"];
+export type EventTrigger = Omit<
+  components["schemas"]["EventTriggerOut"],
+  "signal"
+> & {
+  signal: SignalName;
+};
 
 /**
  * A stored identification event.
  *
- * Mirrors the server schema with two deliberate differences: `suspect_score`
- * is `number | null` where `null` means unscored (never treat it as zero), and
- * the archived `document` stays opaque rather than becoming a second public
- * contract. `document` is an allow-listed view of the archived submission
- * (schema, request id, time, SDK platform and version, IP network, the
- * classified IP with city-level location or IP error, risk, attestation and
- * velocity flags); it carries no raw signals, no user agent and no IP address.
- * `ip_network` is the IPv4 /24 or IPv6 /40 the request came from, such as
- * `203.0.113.0/24`; the API never returns the address.
+ * Mirrors the server schema with `suspect_score` as `number | null` where
+ * `null` means unscored (never treat it as zero), `visitor_id` as `""` when the
+ * submission was unidentifiable (`identifiable === false`), and `document` as
+ * an allow-listed view of the archived submission (schema, request id, time,
+ * SDK platform and version, IP network, the classified IP with city-level
+ * location or IP error, risk, attestation and velocity flags) carrying no raw
+ * signals, no user agent and no IP address. `ip_network` is the IPv4 /24 or
+ * IPv6 /40 the request came from, such as `203.0.113.0/24`; the API never
+ * returns the address.
  */
 export type Event = Omit<
   components["schemas"]["SDKEventOut"],
-  "suspect_score" | "document"
+  "suspect_score" | "document" | "triggers"
 > & {
   suspect_score: number | null;
-  document?: unknown;
+  triggers: EventTrigger[];
+  document?: EventDocument | null;
 };
 
 /** One page of events, newest first. */
@@ -104,6 +254,11 @@ export interface ProxyOptions {
   maxBodyBytes?: number;
   /** Deadline covering the body read, IP lookup and upstream call. Defaults to 5000. */
   timeoutMs?: number;
+  /**
+   * Origins permitted to make cross-origin browser requests to this proxy. Omit
+   * for same-origin routes.
+   */
+  allowedOrigins?: readonly string[] | undefined;
   /**
    * Returns the visitor's address: exactly one IPv4 or IPv6 literal. Take it
    * only from infrastructure your app trusts. `peer.remoteAddress` is the TCP

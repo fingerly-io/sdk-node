@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.0
+
+- Refreshed the vendored v3 OpenAPI and contract fixtures, removing retired
+  deferred supplement routes and types, and added `EventDocument`,
+  `Attestation`, and `SignalName` types covering all v3 signals
+  (`attestation_failed`, `device_inconsistent`, `report_incomplete`,
+  `tampering`, `custom_root_ca`, `secondary_user_profile`) and empty
+  `visitor_id` (`""`) on unidentifiable events.
+- Updated `FingerlyProxy` to enforce the single-path `proxy.md` relay contract:
+  sanitize-and-restore validation of `x-fingerly-sdk-platform`, rejection with
+  HTTP `400` (`missing_origin`) when both `Origin` and a valid
+  `x-fingerly-sdk-platform` are absent (never synthesising `x-fingerly-origin`),
+  forwarding of `Sec-Fetch-*` and `Sec-CH-UA-*` client metadata headers,
+  optional cross-origin CORS `allowedOrigins`, and verbatim raw-byte body
+  forwarding.
+
 ## 0.2.0
 
 - Events carry `project_id`, the Fingerly project an event belongs to, on

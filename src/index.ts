@@ -16,7 +16,11 @@ export {
 } from "./errors.js";
 export type { APIErrorMetadata } from "./errors.js";
 export type {
+  Attestation,
+  AttestationState,
+  AttestationStatus,
   Event,
+  EventDocument,
   EventTrigger,
   EventPage,
   EventListOptions,
@@ -27,5 +31,6 @@ export type {
   ProxyFailure,
   ProxyOptions,
   ProxyPeer,
+  SignalName,
   VerifyWebhookOptions,
 } from "./types.js";
