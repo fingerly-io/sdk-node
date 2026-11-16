@@ -1,10 +1,10 @@
 # @fingerly/node
 
-Server-side event reads, webhook verification, and a same-origin proxy for the
-browser SDK. Node.js 18.16 or newer. No runtime dependencies.
+Server-side event reads, webhook verification, and a first-party proxy for
+browser and native client SDKs. Node.js 18.16 or newer. No runtime dependencies.
 
 ```sh
-npm install @fingerly/node
+npm install @fingerly/node@^0.3.0
 ```
 
 ## Read events
@@ -36,8 +36,18 @@ A 404 from `get` carries one of two codes:
   environment, or the event is past the 30-day retention.
 
 `suspect_score: null` means unscored and
-must not be treated as zero. The archived `document` arrives moments after the
-event: check `has_document` rather than assuming.
+must not be treated as zero. When a submission is unidentifiable
+(`event.identifiable === false`, such as insufficient entropy, a genuine
+embedded WebView, or an unmatched high-risk Web payload), `event.visitor_id` is
+`""` rather than a minted identifier. There are no `deferred_token`,
+`deferred_signals` or `supplements` fields on `v: 3` responses.
+
+The archived `document` (`EventDocument | null`, including platform-neutral
+`attestation: Attestation` and `risk.triggers`) arrives moments after the event:
+check `has_document` rather than assuming. `EventTrigger.signal` is typed as
+`SignalName`, including the `v: 3` anti-spoofing and integrity signals
+`"attestation_failed"`, `"device_inconsistent"`, `"report_incomplete"`,
+`"tampering"`, `"custom_root_ca"` and `"secondary_user_profile"`.
 
 `get` and `list` each make one request and never retry. One deadline
 (`timeoutMs`, 5000 by default) covers connecting, the response and its body.
@@ -86,6 +96,19 @@ fraud on that answer alone.
 `events.list`, is the Fingerly project the event belongs to. It is absent when
 an older server does not send it.
 
+```ts
+const event = await fingerly.events.get(requestId);
+if (!event.identifiable || event.suspect_score === null) {
+  // Unidentifiable (event.visitor_id === "") or unscored: step up or review.
+}
+if (event.triggers.some((t) => t.signal === "attestation_failed")) {
+  // Hardware attestation failed cryptographic or ownership verification.
+}
+if (event.has_document && event.document?.attestation) {
+  console.log(event.document.attestation.state);
+}
+```
+
 ## Webhooks
 
 ```ts
@@ -105,31 +128,57 @@ deduplicate, so persist processed webhook ids. The framework guides below show
 where each framework keeps the raw body.
 
 The `identification.completed` and `visitor.suspect` payloads carry
-`data.project_id`, the project the event belongs to; `identification.refused`
-carries it only when the refused request named a known key. The SDK verifies
-signatures only and does not model payload fields.
+`data.project_id`, the project the event belongs to, and `data.visitor_id` (`""`
+when `data.identifiable === false`); `identification.refused` carries
+`data.project_id` only when the refused request named a known key. The SDK
+verifies signatures only and does not model payload fields.
 
 ## Same-origin proxy
 
-The proxy serves the browser SDK from a path on your own site, which is what
-gets it past content blockers. Create a proxy in the dashboard
-(**Integration > Proxy keys**), mount the handler at the exact path it issued,
-and point the browser SDK at that path with `endpoints: "/k7x2qm4a"`.
+The proxy relays browser and native client SDK requests from a path on your own
+site, getting browser calls past content blockers and keeping native traffic on
+your own domain. Create a proxy in the dashboard (**Integration > Proxy keys**),
+mount the handler at the exact path it issued, and point the client SDK at that
+path with `endpoints: "/k7x2qm4a"`.
 
-The proxy forwards to Fingerly's one ingest URL with the browser's public key,
-your proxy key and the visitor's address. It never forwards cookies or
-authorization headers. It relays back only `content-type`, `x-request-id` and
-the rate limit headers (`retry-after` included), so nothing on the response
-names Fingerly, and marks every response `no-store`. It answers:
+Client SDKs send a single `POST` identification envelope to that path, and the
+proxy forwards the raw request body bytes verbatim (never JSON-decoded or
+re-serialized, and with no `/supplement` subpath) to
+`https://api.fingerly.io/api/v1/ingest` (`apiVersion` and `upstream` override
+the route version and upstream origin). Incoming headers follow the `v: 3`
+sanitize-and-restore sequence:
 
-- **404** for any path but the issued one: no prefix, trailing or doubled
-  slash, dot segment or encoded character, and case-sensitive. A Fetch route
-  sees the URL after the runtime resolved dot segments, so only the Node
-  handler can refuse those; the raw path never reaches anything but ingest
-  either way.
-- **401** when the browser's public key is missing or for another environment,
-  **405** for anything but `POST`, **413** for bodies over 1 MiB
-  (`maxBodyBytes`), all without calling upstream.
+1. Captures `X-Fingerly-SDK-Platform` only if it matches an exact lowercase
+   native or bridge platform (`ios`, `android`, `react-native`,
+   `react-native-ios`, `react-native-android`, `flutter`, `flutter-ios`,
+   `flutter-android`, `lynx-ios`, `lynx-android`, `capacitor`,
+   `kotlin-multiplatform`).
+2. Strips **all** incoming `X-Fingerly-*` headers alongside `Cookie` and
+   `Authorization`, then restores only the validated `X-Fingerly-SDK-Platform`.
+3. Rejects locally with **400** (`missing_origin`) when both `Origin` and a
+   validated `X-Fingerly-SDK-Platform` are absent, and never synthesizes
+   `X-Fingerly-Origin` from `Host`, `Referer` or the request URL.
+4. Forwards `X-Api-Key`, `Content-Type`, `User-Agent`, `Idempotency-Key`,
+   `Sec-Fetch-*` (`Sec-Fetch-Site`, `Sec-Fetch-Mode`, `Sec-Fetch-Dest`),
+   `Sec-CH-UA-*` (`Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`) and
+   `X-Fingerly-Host`.
+
+It relays back only `content-type`, `x-request-id`, `ratelimit-limit`,
+`ratelimit-remaining` and `retry-after`, so nothing on the response names
+Fingerly, and marks every response `Cache-Control: no-store`. Pass
+`allowedOrigins` to accept cross-origin browser `POST` and `OPTIONS` preflight
+requests. It answers:
+
+- **404** for any path but the issued one (retired `/supplement` subpaths
+  included): no prefix, trailing or doubled slash, dot segment or encoded
+  character, and case-sensitive. A Fetch route sees the URL after the runtime
+  resolved dot segments, so only the Node handler can refuse those; the raw path
+  never reaches anything but ingest either way.
+- **400** (`missing_origin`) when neither `Origin` nor a validated
+  `X-Fingerly-SDK-Platform` header is present, **401** when the caller's public
+  key is missing or for another environment, **405** for anything but `POST`
+  (and `OPTIONS` when `allowedOrigins` is configured), **413** for bodies over
+  1 MiB (`maxBodyBytes`), all without calling upstream.
 - **504** when the exchange takes longer than `timeoutMs` (5000 by default),
   **502** when the upstream is unreachable, resets, or answers more than 4 MiB.
   The handler never throws, so your framework never turns an outage into a 500
@@ -325,7 +374,7 @@ Next.js middleware can use the Fetch handler only on the Node runtime:
 `proxy.ts` on Next.js 16. The default Edge runtime has no `node:net` or
 `node:crypto`.
 
-The proxy reports itself upstream as `node/0.2.0`, which the dashboard shows
+The proxy reports itself upstream as `node/0.3.0`, which the dashboard shows
 per proxy.
 
 ## Development
