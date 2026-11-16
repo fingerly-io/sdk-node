@@ -1,6 +1,7 @@
 import { isIP } from "node:net";
 import {
   DEFAULT_ENDPOINT,
+  normalizeApiOrigin,
   normalizeApiVersion,
   normalizeOrigin,
   parseKey,
@@ -135,9 +136,16 @@ export class FingerlyProxy {
       throw new TypeError("clientIp is required");
 
     this.#key = options.proxyKey || undefined;
+    if (
+      options.allowInsecureLoopback !== undefined &&
+      typeof options.allowInsecureLoopback !== "boolean"
+    )
+      throw new TypeError("allowInsecureLoopback must be a boolean");
     this.upstreamUrl =
-      normalizeOrigin(options.upstream ?? DEFAULT_ENDPOINT) +
-      `/api/${normalizeApiVersion(options.apiVersion)}/ingest`;
+      normalizeApiOrigin(
+        options.upstream ?? DEFAULT_ENDPOINT,
+        options.allowInsecureLoopback === true,
+      ) + `/api/${normalizeApiVersion(options.apiVersion)}/ingest`;
     this.path = options.path === undefined ? null : normalizePath(options.path);
     this.maxBodyBytes = positiveInt(
       options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES,
@@ -421,8 +429,11 @@ export class FingerlyProxy {
       "x-fingerly-proxy-version": PROXY_VERSION,
     });
     headers.set("x-fingerly-proxy-key", this.#key!);
+    // One channel only: a browser Origin wins over a platform claim, as on the
+    // API, which refuses a proxied request carrying both.
     if (origin !== "") headers.set("x-fingerly-origin", origin);
-    if (sdkPlatform !== "") headers.set("x-fingerly-sdk-platform", sdkPlatform);
+    else if (sdkPlatform !== "")
+      headers.set("x-fingerly-sdk-platform", sdkPlatform);
     const host = (request.headers.get("host") ?? "").trim();
     if (host !== "") headers.set("x-fingerly-host", host);
     const idempotencyKey = request.headers.get("idempotency-key");

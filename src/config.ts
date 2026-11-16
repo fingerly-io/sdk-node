@@ -74,6 +74,32 @@ export function normalizeOrigin(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
+/** The only hosts a plain HTTP upstream may name, and only when allowed. */
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/**
+ * Validates the proxy's upstream origin, which receives the proxy key.
+ *
+ * Plain HTTP is accepted only when `allowInsecureLoopback` is set and the
+ * host is 127.0.0.1, localhost or [::1], for a local development API.
+ *
+ * @returns The origin, such as `https://api.fingerly.io`.
+ * @throws {TypeError} If the value is anything else.
+ */
+export function normalizeApiOrigin(
+  value: string,
+  allowInsecureLoopback = false,
+): string {
+  const origin = normalizeOrigin(value);
+  const url = new URL(origin);
+  if (url.protocol === "https:") return origin;
+  if (allowInsecureLoopback === true && LOOPBACK_HOSTS.has(url.hostname))
+    return origin;
+  throw new TypeError(
+    "upstream must use https; plain http is accepted only for 127.0.0.1, localhost or [::1] with allowInsecureLoopback",
+  );
+}
+
 /**
  * Validates an API route version before it is spliced into a URL.
  *

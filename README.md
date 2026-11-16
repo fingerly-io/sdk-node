@@ -154,7 +154,9 @@ sanitize-and-restore sequence:
    `flutter-android`, `lynx-ios`, `lynx-android`, `capacitor`,
    `kotlin-multiplatform`).
 2. Strips **all** incoming `X-Fingerly-*` headers alongside `Cookie` and
-   `Authorization`, then restores only the validated `X-Fingerly-SDK-Platform`.
+   `Authorization`. A request with an `Origin` is sent upstream as a browser
+   request, with `X-Fingerly-Origin` only; without one, the validated
+   `X-Fingerly-SDK-Platform` is restored. Never both.
 3. Rejects locally with **400** (`missing_origin`) when both `Origin` and a
    validated `X-Fingerly-SDK-Platform` are absent, and never synthesizes
    `X-Fingerly-Origin` from `Host`, `Referer` or the request URL.
@@ -162,6 +164,12 @@ sanitize-and-restore sequence:
    `Sec-Fetch-*` (`Sec-Fetch-Site`, `Sec-Fetch-Mode`, `Sec-Fetch-Dest`),
    `Sec-CH-UA-*` (`Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`) and
    `X-Fingerly-Host`.
+
+The upstream is checked when the proxy is created and answers are checked
+before they are relayed:
+
+- Plain `http://` is refused, except for `127.0.0.1`, `localhost` or `[::1]`
+  when you also pass `allowInsecureLoopback: true` for a local development API.
 
 It relays back only `content-type`, `x-request-id`, `ratelimit-limit`,
 `ratelimit-remaining` and `retry-after`, so nothing on the response names

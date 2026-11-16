@@ -244,6 +244,12 @@ export interface ProxyOptions {
   /** Overrides the upstream origin implied by the key. */
   upstream?: string;
   /**
+   * Accepts a plain `http://` upstream on 127.0.0.1, localhost or [::1], for a
+   * local development API. Off by default; plain HTTP to any other host is
+   * always refused, because the proxy key would travel unencrypted.
+   */
+  allowInsecureLoopback?: boolean;
+  /**
    * The path the dashboard issued for this proxy, such as `/k7x2qm4a`, matched
    * exactly: no prefix, trailing slash, doubled slash, dot segment or encoded
    * character, and case-sensitive. Omit it when the framework already routes only that path to the

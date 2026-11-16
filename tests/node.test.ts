@@ -45,6 +45,7 @@ beforeAll(async () => {
   const handler = createNodeProxy({
     proxyKey: "fly_px_development_test",
     upstream: `http://127.0.0.1:${(upstream.address() as AddressInfo).port}`,
+    allowInsecureLoopback: true,
     path: "/k7x2qm4a",
     maxBodyBytes: 1_048_576,
     timeoutMs: 2_000,
