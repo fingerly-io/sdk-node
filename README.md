@@ -51,8 +51,11 @@ The archived `document` (`EventDocument | null`, including platform-neutral
 `attestation: Attestation` and `risk.triggers`) arrives moments after the event:
 check `has_document` rather than assuming. `EventTrigger.signal` is typed as
 `SignalName`, including the `v: 3` anti-spoofing and integrity signals
-`"attestation_failed"`, `"device_inconsistent"`, `"report_incomplete"`,
-`"tampering"`, `"custom_root_ca"` and `"secondary_user_profile"`.
+`"attestation_failed"`, `"attestation_downgrade"`, `"device_inconsistent"`,
+`"report_incomplete"`, `"probe_errors"`, `"fetch_metadata_missing"`,
+`"tampering"`, `"custom_root_ca"` and `"secondary_user_profile"`. A native
+`attestation` also carries `attest_skipped` (the app's reason for sending no
+proof) and `downgrade` (the report named an install an attested device owns).
 
 `get` and `list` each make one request and never retry. One deadline
 (`timeoutMs`, 5000 by default) covers connecting, the response and its body.

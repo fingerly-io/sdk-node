@@ -78,8 +78,11 @@ describe("server-owned contract fixtures", () => {
 
     const v3Signals: SignalName[] = [
       "attestation_failed",
+      "attestation_downgrade",
       "device_inconsistent",
       "report_incomplete",
+      "probe_errors",
+      "fetch_metadata_missing",
       "tampering",
       "custom_root_ca",
       "secondary_user_profile",
@@ -142,5 +145,58 @@ describe("server-owned contract fixtures", () => {
     expect(decoded.visitor_id).toBe("");
     expect(decoded.triggers.map((t) => t.signal)).toEqual(v3Signals);
     expect(decoded.document?.attestation?.status).toBe("verified");
+  });
+
+  it("decodes attest_skipped and downgrade on an unproven native attestation", async () => {
+    const attestation: Attestation = {
+      state: "not_attested",
+      platform: "ios",
+      status: "absent",
+      attest_skipped: "timeout",
+      downgrade: true,
+    };
+    const payload: Event = {
+      request_id: "0199a963-e400-7000-8000-000000000098",
+      project_id: "0199a963-e400-7000-8000-0000000000a1",
+      visitor_id: "",
+      occurred_at: "2026-09-17T12:00:00Z",
+      state: "enriched",
+      environment: "development",
+      platform: "ios",
+      sdk_platform: "ios",
+      sdk_version: "0.3.0",
+      suspect_score: 30,
+      suspect_level: "high",
+      triggers: [
+        { signal: "attestation_failed", weight: 30, confidence: "high" },
+      ],
+      has_document: true,
+      document: {
+        schema: 1,
+        request_id: "0199a963-e400-7000-8000-000000000098",
+        occurred_at: "2026-09-17T12:00:00Z",
+        sdk: { platform: "ios", version: "0.3.0" },
+        risk: {
+          platform: "ios",
+          score: 30,
+          level: "high",
+          threshold: 20,
+          source: "default",
+          triggers: [{ signal: "attestation_downgrade", weight: 30 }],
+        },
+        attestation,
+      },
+    };
+
+    const client = load({
+      secretKey: "fly_sk_development_contract",
+      fetchImpl: async () => Response.json(payload),
+    });
+    const decoded = await client.events.get(payload.request_id);
+    expect(decoded.document?.attestation?.attest_skipped).toBe("timeout");
+    expect(decoded.document?.attestation?.downgrade).toBe(true);
+    expect(decoded.document?.risk?.triggers[0]?.signal).toBe(
+      "attestation_downgrade",
+    );
   });
 });

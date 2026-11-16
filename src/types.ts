@@ -60,6 +60,7 @@ export type SignalName =
   | "bot"
   | "automation"
   | "bad_bot"
+  | "fetch_metadata_missing"
   | "high_activity"
   | "incognito_mode"
   | "incognito"
@@ -68,8 +69,10 @@ export type SignalName =
   | "active_call"
   | "attestation_missing"
   | "attestation_failed"
+  | "attestation_downgrade"
   | "device_inconsistent"
   | "report_incomplete"
+  | "probe_errors"
   | "custom_root_ca"
   | "secondary_user_profile"
   | (string & {});
@@ -102,6 +105,16 @@ export interface Attestation {
   revocation_checked?: boolean;
   package_bound?: boolean;
   signer_bound?: boolean;
+  /**
+   * The app's own reason for sending no attestation, such as `not_offered`,
+   * `unsupported` or `timeout`. Diagnostic only; it never lowers the score.
+   */
+  attest_skipped?: string;
+  /**
+   * True when an unproven or rejected report named an install an attested
+   * device owns, so it was answered unidentifiable.
+   */
+  downgrade?: boolean;
   mode?: string;
   app_id?: string;
   environment?: string;

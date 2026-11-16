@@ -5,9 +5,11 @@
 - Refreshed the vendored v3 OpenAPI and contract fixtures, removing retired
   deferred supplement routes and types, and added `EventDocument`,
   `Attestation`, and `SignalName` types covering all v3 signals
-  (`attestation_failed`, `device_inconsistent`, `report_incomplete`,
-  `tampering`, `custom_root_ca`, `secondary_user_profile`) and empty
-  `visitor_id` (`""`) on unidentifiable events.
+  (`attestation_failed`, `attestation_downgrade`, `device_inconsistent`,
+  `report_incomplete`, `probe_errors`, `fetch_metadata_missing`, `tampering`,
+  `custom_root_ca`, `secondary_user_profile`), `attest_skipped` and
+  `downgrade` on `Attestation`, and empty `visitor_id` (`""`) on
+  unidentifiable events.
 - Updated `FingerlyProxy` to enforce the single-path `proxy.md` relay contract:
   sanitize-and-restore validation of `x-fingerly-sdk-platform`, rejection with
   HTTP `400` (`missing_origin`) when both `Origin` and a valid
