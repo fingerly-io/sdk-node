@@ -277,6 +277,19 @@ export class FingerlyProxy {
             redirect: "manual",
             signal,
           });
+          // A redirect is never followed, and never relayed: the key went to
+          // the pinned URL only. A replacement fetch that ignored "manual"
+          // shows as `redirected` or a different final URL.
+          const unusable =
+            response.redirected ||
+            (response.url !== "" && response.url !== this.upstreamUrl) ||
+            (response.status >= 300 && response.status <= 399)
+              ? "redirect"
+              : null;
+          if (unusable !== null) {
+            response.body?.cancel().catch(() => {});
+            throw new UpstreamUnusable(unusable);
+          }
           return await relay(response, signal, cors);
         },
       );
@@ -514,6 +527,13 @@ async function resolveClientIp(
 class UpstreamResponseTooLarge extends Error {
   constructor() {
     super(`upstream response exceeded ${MAX_RESPONSE_BYTES} bytes`);
+  }
+}
+
+/** An upstream answer the proxy will not relay: a redirect. */
+class UpstreamUnusable extends Error {
+  constructor(readonly reason: "redirect") {
+    super(reason);
   }
 }
 

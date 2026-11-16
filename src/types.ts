@@ -274,7 +274,12 @@ export interface ProxyOptions {
    * upstream, and the problem is logged once per process.
    */
   clientIp(request: Request, peer: ProxyPeer): string | Promise<string>;
-  /** Replacement `fetch` for the upstream call. */
+  /**
+   * Replacement `fetch` for the upstream call. It must honour
+   * `redirect: "manual"`: the proxy never follows a redirect, answers any 3xx
+   * with 502, and answers 502 for a response marked `redirected` or whose
+   * final URL is not the pinned ingest URL.
+   */
   fetchImpl?: typeof fetch;
   /**
    * Receives one concise line per failure, for your own logger. Without it

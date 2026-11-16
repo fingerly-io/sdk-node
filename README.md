@@ -170,6 +170,9 @@ before they are relayed:
 
 - Plain `http://` is refused, except for `127.0.0.1`, `localhost` or `[::1]`
   when you also pass `allowInsecureLoopback: true` for a local development API.
+- Redirects are never followed: any `3xx` from upstream, or a response a
+  replacement `fetchImpl` followed to another URL, is answered **502**. A
+  `fetchImpl` you supply must honour `redirect: "manual"`.
 
 It relays back only `content-type`, `x-request-id`, `ratelimit-limit`,
 `ratelimit-remaining` and `retry-after`, so nothing on the response names

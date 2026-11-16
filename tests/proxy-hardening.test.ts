@@ -95,3 +95,76 @@ describe("plain HTTP upstream", () => {
     ).toThrow(TypeError);
   });
 });
+
+async function listen(server: net.Server): Promise<number> {
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return (server.address() as AddressInfo).port;
+}
+
+const proxyFor = (port: number, fetchImpl?: typeof fetch) =>
+  createProxy({
+    ...base,
+    upstream: `http://127.0.0.1:${port}`,
+    allowInsecureLoopback: true,
+    onError: () => {},
+    ...(fetchImpl ? { fetchImpl } : {}),
+  });
+
+describe("redirects from upstream", () => {
+  let targetHits: string[] = [];
+  let status = 307;
+  let upstreamPort = 0;
+  let targetPort = 0;
+  const target = http.createServer((req, res) => {
+    targetHits.push(String(req.headers["x-fingerly-proxy-key"] ?? ""));
+    req.resume();
+    res.end("{}");
+  });
+  const upstream = http.createServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      res.writeHead(status, {
+        location: `http://127.0.0.1:${targetPort}/collect`,
+        "content-type": "application/json",
+      });
+      res.end("{}");
+    });
+  });
+
+  beforeAll(async () => {
+    targetPort = await listen(target);
+    upstreamPort = await listen(upstream);
+  });
+  afterAll(() => {
+    target.close();
+    upstream.close();
+  });
+
+  it.each([300, 301, 302, 303, 304, 307, 308])(
+    "answers an upstream %i with 502 and follows nothing",
+    async (code) => {
+      status = code;
+      targetHits = [];
+      const r = await proxyFor(upstreamPort)(
+        post({ origin: "https://shop.test" }),
+      );
+      expect(r.status).toBe(502);
+      expect(r.headers.get("cache-control")).toBe("no-store");
+      expect(r.headers.get("location")).toBeNull();
+      expect(targetHits).toEqual([]);
+    },
+  );
+
+  it("answers 502 when a supplied fetch followed a redirect anyway", async () => {
+    status = 307;
+    targetHits = [];
+    const following: typeof fetch = (input, init) =>
+      fetch(input, { ...init, redirect: "follow" });
+    const r = await proxyFor(
+      upstreamPort,
+      following,
+    )(post({ origin: "https://shop.test" }));
+    expect(r.status).toBe(502);
+    expect(r.headers.get("cache-control")).toBe("no-store");
+  });
+});
