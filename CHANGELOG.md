@@ -30,6 +30,9 @@
   forwarding of `Sec-Fetch-*` and `Sec-CH-UA-*` client metadata headers,
   optional cross-origin CORS `allowedOrigins`, and verbatim raw-byte body
   forwarding.
+- `FingerlyProxy` requires `proxyKey`, answers `401` with `no-store` unless
+  the caller's `X-Api-Key` is a public key of the proxy key's environment, and
+  never sends a secret key upstream.
 
 ## 0.2.0
 
