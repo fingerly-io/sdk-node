@@ -6,6 +6,7 @@
  */
 
 export { Fingerly, load } from "./client.js";
+export { DeviceCheckClient } from "./device-check.js";
 export { EventsClient } from "./events.js";
 export { FingerlyProxy, createNodeProxy, createProxy } from "./proxy.js";
 export { verifyWebhook } from "./webhooks.js";
@@ -14,11 +15,14 @@ export {
   FingerlyConnectionError,
   FingerlyTimeoutError,
 } from "./errors.js";
-export type { APIErrorMetadata } from "./errors.js";
+export type { APIErrorMetadata, DeviceCheckErrorCode } from "./errors.js";
 export type {
   Attestation,
   AttestationState,
   AttestationStatus,
+  DeviceCheckBits,
+  DeviceCheckWrite,
+  DeviceCheckWriteResult,
   Event,
   EventDocument,
   EventTrigger,

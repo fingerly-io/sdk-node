@@ -356,3 +356,21 @@ export interface NodeResponse {
 
 /** Express-style continuation, called when the request is not for the proxy. */
 export type NodeNext = (error?: unknown) => void;
+
+/**
+ * The device's two DeviceCheck bits, from `fingerly.deviceCheck.query`. The
+ * bits mean what you decide; Fingerly never reads them.
+ */
+export type DeviceCheckBits = components["schemas"]["DeviceCheckQueryOut"];
+
+/** The bits to set with `fingerly.deviceCheck.write`; a bit left out keeps its value. */
+export interface DeviceCheckWrite {
+  bit0?: boolean;
+  bit1?: boolean;
+}
+
+/** What Apple accepted: the bits the write named, and only those. */
+export interface DeviceCheckWriteResult {
+  bit0?: boolean;
+  bit1?: boolean;
+}

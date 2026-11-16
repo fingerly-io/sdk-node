@@ -124,4 +124,42 @@ export class FingerlyAPIError extends Error {
   get isPending(): boolean {
     return this.code === "event_pending";
   }
+
+  /**
+   * Apple's HTTP status for `422 apple_rejected` on a DeviceCheck call, read
+   * from the `apple_status` entry of `details`; null for any other error.
+   */
+  get appleStatus(): number | null {
+    if (this.code !== "apple_rejected" || !Array.isArray(this.details))
+      return null;
+    for (const entry of this.details as unknown[]) {
+      const detail = entry as { field?: unknown; issue?: unknown } | null;
+      if (detail?.field !== "apple_status" || typeof detail.issue !== "string")
+        continue;
+      return /^\d{3}$/.test(detail.issue) ? Number(detail.issue) : null;
+    }
+    return null;
+  }
 }
+
+/**
+ * The `code` of a {@link FingerlyAPIError} from `fingerly.deviceCheck`.
+ *
+ * - `device_check_not_held` (404): no token is held for the event.
+ * - `device_check_spent` (409): the token was used, or a retry was not the
+ *   first request.
+ * - `device_check_busy` (409): another call is using the token.
+ * - `credential_unavailable` (409): the project's Apple key is missing,
+ *   refused, or has DeviceCheck off; the token is kept.
+ * - `bits_required` (422): a write named neither bit.
+ * - `apple_rejected` (422): Apple rejected the token; see `appleStatus`.
+ * - `device_check_unavailable` (503): retried automatically, then thrown.
+ */
+export type DeviceCheckErrorCode =
+  | "device_check_not_held"
+  | "device_check_spent"
+  | "device_check_busy"
+  | "credential_unavailable"
+  | "bits_required"
+  | "apple_rejected"
+  | "device_check_unavailable";

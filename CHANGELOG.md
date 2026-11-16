@@ -2,6 +2,12 @@
 
 ## 0.3.0
 
+- Added `fingerly.deviceCheck.query(requestId)` and
+  `fingerly.deviceCheck.write(requestId, { bit0?, bit1? })`, which spend the
+  DeviceCheck token held for an iOS event to read or set the device's two
+  bits. They retry the identical request after a `503` or a transport
+  failure, and `FingerlyAPIError.appleStatus` carries Apple's status on
+  `apple_rejected`.
 - Refreshed the vendored v3 OpenAPI and contract fixtures, removing retired
   deferred supplement routes and types, and added `EventDocument`,
   `Attestation`, and `SignalName` types covering all v3 signals

@@ -117,6 +117,44 @@ if (event.has_document && event.document?.attestation) {
 }
 ```
 
+## DeviceCheck bits on iOS
+
+When DeviceCheck is turned on for your project's Apple key, an iOS
+identification holds an Apple DeviceCheck token for one hour. The token pays
+for exactly one Apple call: `fingerly.deviceCheck.query` reads the device's two
+bits, `fingerly.deviceCheck.write` sets them, never both. Apple treats a token
+as single-use, so a "check, then mark" flow such as a once-per-device free
+trial spends two identifications:
+
+1. On the identification that asks for the trial, query the bits.
+2. If they say the device had one, refuse. Otherwise grant the trial and record
+   the grant in your own data; until the bit is written, that record is what
+   stops a second trial.
+3. On the next identification from that install, write the bit.
+
+```ts
+// bit0 means "this device has had a free trial". The meaning is yours.
+const bits = await fingerly.deviceCheck.query(trialRequestId);
+if (bits.found && bits.bit0) return "offer-paid-plan";
+await trials.grant({ accountId, deviceMarked: false });
+
+// Later, with the request ID of the app's next identification:
+await fingerly.deviceCheck.write(markRequestId, { bit0: true });
+await trials.update(accountId, { deviceMarked: true });
+```
+
+Errors are `FingerlyAPIError` with a `DeviceCheckErrorCode` in `code`:
+`device_check_not_held` (404, no token: decide without the bits),
+`device_check_spent`, `device_check_busy`, `credential_unavailable` (409),
+`bits_required`, `apple_rejected` (422, Apple's HTTP status in `appleStatus`)
+and `device_check_unavailable` (503). A write naming no bit is refused with a
+`TypeError` before anything is sent.
+
+After a `503` or a transport failure the SDK resends the identical request,
+twice at most. A token kept after such an answer accepts only the request it
+was first used for: retry with the same method and bits, or the API answers
+`device_check_spent`.
+
 ## Webhooks
 
 ```ts
@@ -427,7 +465,8 @@ runs everything on Node 18, 20, 22 and 24.
 ## Source structure
 
 `client.ts` composes the public `Fingerly` class. `events.ts` owns event reads
-and the list filters; `transport.ts` owns authenticated HTTP and API errors.
+and the list filters, and `device-check.ts` the DeviceCheck spends;
+`transport.ts` owns authenticated HTTP and API errors.
 `proxy.ts` handles the proxy path, headers and failures, and `node.ts` adapts
 Node servers to it. `body.ts` reads bodies under a size cap. `webhooks.ts`
 verifies signatures. `config.ts` validates caller-supplied options. Shared
