@@ -50,6 +50,57 @@ describe("one channel header upstream", () => {
   });
 });
 
+describe("no secret-key mode", () => {
+  const secretKey = "fly_sk_development_test";
+
+  it("answers 500 and forwards nothing without a proxy key", async () => {
+    for (const options of [
+      { secretKey, clientIp: base.clientIp },
+      { proxyKey: secretKey, clientIp: base.clientIp },
+    ]) {
+      const { fetchImpl } = capture();
+      const proxy = createProxy({
+        ...(options as unknown as typeof base),
+        fetchImpl,
+        onError: () => {},
+      });
+      const r = await proxy(post({ origin: "https://shop.test" }));
+      expect(r.status).toBe(500);
+      expect(r.headers.get("cache-control")).toBe("no-store");
+      expect(fetchImpl).not.toHaveBeenCalled();
+    }
+  });
+
+  it("refuses a secret key from the caller with 401", async () => {
+    const { fetchImpl } = capture();
+    const proxy = createProxy({ ...base, fetchImpl });
+    for (const key of [secretKey, ""]) {
+      const r = await proxy(
+        post({ origin: "https://shop.test", "x-api-key": key }),
+      );
+      expect(r.status).toBe(401);
+      expect(r.headers.get("cache-control")).toBe("no-store");
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("never carries a secret key upstream", async () => {
+    const { seen, fetchImpl } = capture();
+    const proxy = createProxy({
+      ...base,
+      ...({ secretKey } as object),
+      fetchImpl,
+    });
+    const r = await proxy(post({ origin: "https://shop.test" }));
+    expect(r.status).toBe(200);
+    expect(seen[0]?.get("x-api-key")).toBe(publicKey);
+    expect(seen[0]?.get("x-fingerly-proxy-key")).toBe(proxyKey);
+    seen[0]?.forEach((value) => {
+      expect(value).not.toContain("fly_sk_");
+    });
+  });
+});
+
 describe("plain HTTP upstream", () => {
   it.each([
     "http://upstream.invalid",
