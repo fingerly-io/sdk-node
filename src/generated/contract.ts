@@ -871,7 +871,9 @@ export interface components {
             mode: string;
             /** @description Optional Google Play Integrity token with requestHash equal to hex(statementDigest) */
             play_integrity_token?: string;
-            /** @description Optional retiring 64-char hex Android key ID during 24h lease rollover */
+            /** @description iOS, app_attest_register only: standard Base64 CBOR App Attest assertion by the previous confirmed key (prev_key_id) with clientDataHash equal to statementDigest */
+            prev_assertion?: string;
+            /** @description Optional key ID of the previous confirmed key: 64-char hex (Android) or standard Base64 App Attest key ID (iOS, app_attest_register only) */
             prev_key_id?: string;
             /** @description Optional Base64 ASN.1 DER signature by retiring Android key over identical framedPreimage */
             prev_signature?: string;
@@ -1033,6 +1035,8 @@ export interface components {
         IdentifyIn: {
             /** @description Hardware attestation envelope bound to raw signals bytes (v3 native SDKs) */
             attest?: components["schemas"]["AttestEnvelope"] | null;
+            /** @description Native only, and only without attest: why the SDK sent no attestation. One of not_offered, unsupported, challenge_unavailable, key_error, timeout, backoff, install_unavailable. Diagnostic; it never lowers the score */
+            attest_skipped?: string;
             /** @description The SDK's consent state; must be granted, or the request is refused with consent_required */
             consent?: string;
             /** @description Which SDK collected these signals */
@@ -1041,7 +1045,7 @@ export interface components {
             signals?: {
                 [key: string]: unknown;
             };
-            /** @description An opaque value echoed back on the event and kept in long-lived rollups. A label for your own systems, such as a client or app name; never a personal identifier (user ID, email, install ID or advertising ID) */
+            /** @description An opaque value echoed back on the event and kept in long-lived rollups. A label for your own systems, such as a client or app name; never a personal identifier (user ID, email, install ID or advertising ID). A value holding a control character (U+0000 to U+001F, U+007F) is refused with invalid_request */
             tag?: string;
             /**
              * Format: int64
@@ -1050,7 +1054,9 @@ export interface components {
             v?: number;
         };
         IdentifyOut: {
-            /** @description rekey_required when the presented v3 attestation key is unknown or expired */
+            /** @description Native only, present whenever attest was sent: the key_id the server evaluated, copied from attest.key_id */
+            attest_key_id?: string;
+            /** @description Native only, present whenever attest was sent: registered (the key was verified, stored and owns the install), valid (an assertion verified against a stored key), rekey_required (the key is unknown or expired), rejected (attestation failed) */
             attest_key_status?: string;
             /** @description This submission was answered before; the verdict replays the first one */
             duplicate?: boolean;
@@ -1096,6 +1102,8 @@ export interface components {
         IngestIn: {
             /** @description Hardware attestation envelope bound to raw signals bytes (v3 native SDKs) */
             attest?: components["schemas"]["AttestEnvelope"] | null;
+            /** @description Native only, and only without attest: why the SDK sent no attestation. One of not_offered, unsupported, challenge_unavailable, key_error, timeout, backoff, install_unavailable. Diagnostic; it never lowers the score */
+            attest_skipped?: string;
             /** @description The SDK's consent state; must be granted, or the request is refused with consent_required */
             consent?: string;
             /** @description Which SDK collected these signals */
@@ -1104,7 +1112,7 @@ export interface components {
             signals?: {
                 [key: string]: unknown;
             };
-            /** @description An opaque value echoed back on the event and kept in long-lived rollups; never a personal identifier */
+            /** @description An opaque value echoed back on the event and kept in long-lived rollups; never a personal identifier. A value holding a control character (U+0000 to U+001F, U+007F) is refused with invalid_request */
             tag?: string;
             /**
              * Format: int64
@@ -3949,8 +3957,8 @@ export interface operations {
                     environment?: string;
                     /** Format: date-time */
                     expires_at?: string | null;
-                    /** @description Withhold suspect_score and suspect_level from a browser, an app, a proxy and a hosted domain. Defaults to false */
-                    hide_client_score?: boolean;
+                    /** @description Withhold suspect_score and suspect_level from a browser, an app, a proxy and a hosted domain. Defaults to true for a public key and false for a secret key */
+                    hide_client_score?: boolean | null;
                     /** @description public or secret */
                     kind?: string;
                     /** @description What the key is called. The only part a person can recognise once the secret is masked */
