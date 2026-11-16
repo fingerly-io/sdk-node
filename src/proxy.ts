@@ -282,10 +282,13 @@ export class FingerlyProxy {
           // shows as `redirected` or a different final URL.
           const unusable =
             response.redirected ||
-            (response.url !== "" && response.url !== this.upstreamUrl) ||
-            (response.status >= 300 && response.status <= 399)
+            (response.url !== "" && response.url !== this.upstreamUrl)
               ? "redirect"
-              : null;
+              : response.status < 200 ||
+                  response.status > 599 ||
+                  (response.status >= 300 && response.status <= 399)
+                ? "status"
+                : null;
           if (unusable !== null) {
             response.body?.cancel().catch(() => {});
             throw new UpstreamUnusable(unusable);
@@ -530,9 +533,9 @@ class UpstreamResponseTooLarge extends Error {
   }
 }
 
-/** An upstream answer the proxy will not relay: a redirect. */
+/** An upstream answer the proxy will not relay: a redirect or a bad status. */
 class UpstreamUnusable extends Error {
-  constructor(readonly reason: "redirect") {
+  constructor(readonly reason: "redirect" | "status") {
     super(reason);
   }
 }

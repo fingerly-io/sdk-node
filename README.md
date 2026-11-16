@@ -173,6 +173,7 @@ before they are relayed:
 - Redirects are never followed: any `3xx` from upstream, or a response a
   replacement `fetchImpl` followed to another URL, is answered **502**. A
   `fetchImpl` you supply must honour `redirect: "manual"`.
+- An upstream status outside 200 to 599 is answered **502**.
 
 It relays back only `content-type`, `x-request-id`, `ratelimit-limit`,
 `ratelimit-remaining` and `retry-after`, so nothing on the response names

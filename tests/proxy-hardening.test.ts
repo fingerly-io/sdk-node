@@ -168,3 +168,40 @@ describe("redirects from upstream", () => {
     expect(r.headers.get("cache-control")).toBe("no-store");
   });
 });
+
+describe("statuses from upstream", () => {
+  // Answers whatever status line it is told, byte for byte.
+  let rawStatus = "600";
+  let rawPort = 0;
+  const raw = net.createServer((socket) => {
+    socket.once("data", () => {
+      socket.end(
+        `HTTP/1.1 ${rawStatus} Odd\r\ncontent-type: application/json\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}`,
+      );
+    });
+    socket.on("error", () => {});
+  });
+
+  beforeAll(async () => {
+    rawPort = await listen(raw);
+  });
+  afterAll(() => raw.close());
+
+  it.each(["099", "000", "100", "199", "600", "700", "999"])(
+    "answers an upstream status %s with 502",
+    async (code) => {
+      rawStatus = code;
+      const r = await proxyFor(rawPort)(post({ origin: "https://shop.test" }));
+      expect(r.status).toBe(502);
+      expect(r.headers.get("cache-control")).toBe("no-store");
+    },
+  );
+
+  it("still relays an ordinary 4xx and 5xx", async () => {
+    for (const code of ["200", "409", "429", "503"]) {
+      rawStatus = code;
+      const r = await proxyFor(rawPort)(post({ origin: "https://shop.test" }));
+      expect(r.status).toBe(Number(code));
+    }
+  });
+});
