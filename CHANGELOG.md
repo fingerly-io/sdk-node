@@ -2,6 +2,13 @@
 
 ## 0.3.0
 
+- Added `fingerly.events.verify(requestId, { maxAgeSeconds, tag, consume })`,
+  which reads an event and checks that it exists, is recent (300 seconds by
+  default), carries the expected `tag`, is identifiable and was scored, then
+  consumes it once, answering `{ ok, reason, event }`; and
+  `fingerly.events.consume(requestId)`, which throws
+  `FingerlyEventAlreadyConsumedError` (`event_already_consumed`, with
+  `consumedAt`) after the first call.
 - Added `fingerly.deviceCheck.query(requestId)` and
   `fingerly.deviceCheck.write(requestId, { bit0?, bit1? })`, which spend the
   DeviceCheck token held for an iOS event to read or set the device's two

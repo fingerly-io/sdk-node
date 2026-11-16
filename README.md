@@ -89,33 +89,62 @@ try {
 
 ## Verify a backend action
 
-Read the event with a server-only key. Check that its tag matches your action,
-that it is recent, that its environment is correct, and that it was scored.
-Apply your own policy to the server's verdict. Do not authorize an action using
-scores or visitor identifiers supplied by the browser. Tags correlate events;
-they do not replace your application's authentication or replay protection.
-Never put a personal identifier (user ID, email, install ID, advertising ID) in
-a tag: the server keeps tag values in long-lived rollups.
-An `event_pending` error means the server has not decided yet: retry after
-`retryAfter` seconds or verify asynchronously, and do not refuse the action as
-fraud on that answer alone.
+A `requestId` posted by the browser is untrusted input until your backend
+verifies it. `fingerly.events.verify` reads the event with the server-only key
+and checks it, in this order, stopping at the first failure:
+
+| `reason` | The event is refused when |
+|---|---|
+| `not_found` | no event exists for the request id (`404 event_not_found`) |
+| `too_old` | `occurred_at` is more than `maxAgeSeconds` ago (300 by default), or is missing or unreadable |
+| `tag_mismatch` | you passed `tag` and the event's `tag` is not exactly that value |
+| `unidentifiable` | `visitor_id` is `""` |
+| `unscored` | `suspect_score` is `null` |
+| `already_consumed` | an earlier call consumed the event |
+
+When every other check passes, `verify` consumes the event as its last step
+(`POST /api/v1/events/{request_id}/consume`), so one event backs one decision
+and a replayed `requestId` answers `already_consumed`. Pass `consume: false`
+to check without consuming. `ok` is true and `reason` is `""` only when every
+check passed. `event` is the event read, `null` only for `not_found`.
+
+`verify` never judges the score: apply your own policy to the event once `ok`
+is true. Do not authorize an action using scores or visitor identifiers
+supplied by the browser. Tags correlate events; they do not replace your
+application's authentication. Never put a personal identifier (user ID, email,
+install ID, advertising ID) in a tag: the server keeps tag values in
+long-lived rollups. See
+[server-side verification](https://docs.fingerly.io/docs/server-side-verification).
+
+```ts
+const { ok, reason, event } = await fingerly.events.verify(requestId, {
+  maxAgeSeconds: 120,
+  tag: "signup",
+});
+if (!ok) {
+  // reason: not_found, too_old, tag_mismatch, unidentifiable, unscored or
+  // already_consumed. Step up or review.
+} else if (event!.suspect_level !== "low") {
+  // Your policy: step up or review anything but a low score.
+} else if (event!.triggers.some((t) => t.signal === "attestation_failed")) {
+  // Hardware attestation failed cryptographic or ownership verification.
+}
+```
+
+`404 event_pending` is thrown rather than turned into a reason: the server has
+not decided yet. Retry after `retryAfter` seconds or verify asynchronously,
+and do not refuse the action as fraud on that answer alone. Any other failure
+is thrown as it would be from `events.get`, and nothing is consumed.
+
+`fingerly.events.consume(requestId)` consumes an event directly. The first
+call answers `{ request_id, consumed_at, first: true }`; any later one throws
+`FingerlyEventAlreadyConsumedError` (a kind of `FingerlyAPIError`, `status`
+409, `code` `event_already_consumed`) whose `consumedAt` says when. It is one
+request and never retried.
 
 `project_id` on an event from `events.get`, and on every row from
 `events.list`, is the Fingerly project the event belongs to. It is absent when
 an older server does not send it.
-
-```ts
-const event = await fingerly.events.get(requestId);
-if (!event.identifiable || event.suspect_score === null) {
-  // Unidentifiable (event.visitor_id === "") or unscored: step up or review.
-}
-if (event.triggers.some((t) => t.signal === "attestation_failed")) {
-  // Hardware attestation failed cryptographic or ownership verification.
-}
-if (event.has_document && event.document?.attestation) {
-  console.log(event.document.attestation.state);
-}
-```
 
 ## DeviceCheck bits on iOS
 

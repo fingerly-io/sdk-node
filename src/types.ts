@@ -374,3 +374,53 @@ export interface DeviceCheckWriteResult {
   bit0?: boolean;
   bit1?: boolean;
 }
+
+/** The first consumption of an event, from `fingerly.events.consume`. */
+export interface EventConsumption {
+  request_id: string;
+  /** When the event was consumed, RFC 3339. */
+  consumed_at: string;
+  /** Always true: a later call throws `FingerlyEventAlreadyConsumedError`. */
+  first: boolean;
+}
+
+/**
+ * Why `fingerly.events.verify` refused an event, or `""` when it passed.
+ *
+ * - `not_found`: no event for the request id (`404 event_not_found`).
+ * - `too_old`: `occurred_at` is more than `maxAgeSeconds` ago, or unreadable.
+ * - `tag_mismatch`: the event's `tag` is not the `tag` asked for.
+ * - `unidentifiable`: the event's `visitor_id` is empty.
+ * - `unscored`: the event's `suspect_score` is null.
+ * - `already_consumed`: an earlier call consumed the event.
+ */
+export type VerifyReason =
+  | ""
+  | "not_found"
+  | "too_old"
+  | "tag_mismatch"
+  | "unidentifiable"
+  | "unscored"
+  | "already_consumed";
+
+/** Options for `fingerly.events.verify`. */
+export interface VerifyOptions {
+  /** Oldest acceptable event age in whole seconds; 300 by default. */
+  maxAgeSeconds?: number;
+  /** The tag the event must carry exactly; not checked when omitted. */
+  tag?: string;
+  /** Consume the event once every other check passes; true by default. */
+  consume?: boolean;
+  /** Caller cancellation, for both the read and the consumption. */
+  signal?: AbortSignal;
+}
+
+/** The outcome of `fingerly.events.verify`. */
+export interface VerifyResult {
+  /** True only when every check passed (and the event was consumed, if asked). */
+  ok: boolean;
+  /** The first check that failed, or `""` when `ok`. */
+  reason: VerifyReason;
+  /** The event read; null only for `not_found`. */
+  event: Event | null;
+}

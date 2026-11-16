@@ -13,6 +13,7 @@ export { verifyWebhook } from "./webhooks.js";
 export {
   FingerlyAPIError,
   FingerlyConnectionError,
+  FingerlyEventAlreadyConsumedError,
   FingerlyTimeoutError,
 } from "./errors.js";
 export type { APIErrorMetadata, DeviceCheckErrorCode } from "./errors.js";
@@ -24,6 +25,7 @@ export type {
   DeviceCheckWrite,
   DeviceCheckWriteResult,
   Event,
+  EventConsumption,
   EventDocument,
   EventTrigger,
   EventPage,
@@ -36,5 +38,8 @@ export type {
   ProxyOptions,
   ProxyPeer,
   SignalName,
+  VerifyOptions,
+  VerifyReason,
+  VerifyResult,
   VerifyWebhookOptions,
 } from "./types.js";

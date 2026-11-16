@@ -87,7 +87,7 @@ export interface APIErrorMetadata {
  * and any occurrence of the secret key in the metadata is redacted.
  */
 export class FingerlyAPIError extends Error {
-  override readonly name = "FingerlyAPIError";
+  override readonly name: string = "FingerlyAPIError";
 
   static override [Symbol.hasInstance](value: unknown): boolean {
     return branded(value, "FingerlyAPIError");
@@ -139,6 +139,42 @@ export class FingerlyAPIError extends Error {
       return /^\d{3}$/.test(detail.issue) ? Number(detail.issue) : null;
     }
     return null;
+  }
+}
+
+/**
+ * Raised by `fingerly.events.consume` (`409 event_already_consumed`) when the
+ * event was consumed by an earlier call. A kind of {@link FingerlyAPIError}
+ * with `status` 409 and `code` `event_already_consumed`.
+ */
+export class FingerlyEventAlreadyConsumedError extends FingerlyAPIError {
+  override readonly name: string = "FingerlyEventAlreadyConsumedError";
+
+  static override [Symbol.hasInstance](value: unknown): boolean {
+    return branded(value, "FingerlyEventAlreadyConsumedError");
+  }
+
+  /**
+   * When the first call consumed the event (RFC 3339, as the API sent it), or
+   * null when the answer did not say.
+   */
+  readonly consumedAt: string | null;
+
+  /**
+   * @param message Human-readable summary.
+   * @param status The HTTP status code, 409.
+   * @param metadata Structured detail parsed from the error body.
+   * @param consumedAt When the event was first consumed, if known.
+   */
+  constructor(
+    message: string,
+    status: number,
+    metadata: APIErrorMetadata,
+    consumedAt: string | null,
+  ) {
+    super(message, status, metadata);
+    brand(this, "FingerlyEventAlreadyConsumedError");
+    this.consumedAt = consumedAt;
   }
 }
 
