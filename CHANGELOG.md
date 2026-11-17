@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.0
+
+- Added runtime constants for every fixed string value the API sends:
+  `Signal`, `SuspectLevel`, `Confidence`, `AttestationState`,
+  `AttestationStatus`, `AttestSkippedReason`, `VerifyReason`,
+  `WebhookEventType`, `EventState`, `Platform`, `Environment`,
+  `AnonymityNetwork`, `DeviceKind`, `VisitorKind`, `DeviceCheckErrorCode`
+  and `ProxyFailureKind`. Each is an `as const` object with a type of the
+  same name, so `event.suspect_level === SuspectLevel.High` works. Fields the
+  server fills in stay open, so a value added later still type-checks.
+- `SignalName` now matches the server: added `repeated_reinstall`,
+  `device_activity_high` and `device_activity_very_high`, removed
+  `app_attest_key_churn`. `anonymity_network` documents `relay`.
+- `AttestationState` and `AttestationStatus` are closed types now; the
+  fields that hold them stay open.
+- `VerifyResult.reason` is typed as `VerifyReason`; a passed check is
+  `VerifyReason.Ok` (`""`).
+
 ## 0.3.0
 
 - Added `fingerly.events.verify(requestId, { maxAgeSeconds, tag, consume })`,
