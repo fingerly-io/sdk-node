@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1
+
+- `AttestSkippedReason` members describe when a native SDK sends each value.
+- The vendored OpenAPI contract declares the enums of every closed string
+  field, and the generated types follow it. The public `Event` and
+  `EventTrigger` fields stay open, so a value the server adds later still
+  type-checks.
+
 ## 0.4.0
 
 - Added runtime constants for every fixed string value the API sends:
