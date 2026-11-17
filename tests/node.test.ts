@@ -7,6 +7,8 @@ import { createNodeProxy } from "../src/index.js";
 interface Seen {
   ip: string | undefined;
   bytes: number;
+  rawBody: string;
+  headers: http.IncomingHttpHeaders;
 }
 
 const seen: Seen[] = [];
@@ -14,12 +16,15 @@ let upstreamClosed = 0;
 let hang = false;
 
 const upstream = http.createServer((req, res) => {
-  let bytes = 0;
-  req.on("data", (chunk: Buffer) => (bytes += chunk.length));
+  const chunks: Buffer[] = [];
+  req.on("data", (chunk: Buffer) => chunks.push(chunk));
   req.on("end", () => {
+    const raw = Buffer.concat(chunks);
     seen.push({
       ip: req.headers["x-fingerly-client-ip"] as string | undefined,
-      bytes,
+      bytes: raw.length,
+      rawBody: raw.toString("utf8"),
+      headers: req.headers,
     });
     if (hang) {
       res.on("close", () => upstreamClosed++);
@@ -40,6 +45,7 @@ beforeAll(async () => {
   const handler = createNodeProxy({
     proxyKey: "fly_px_development_test",
     upstream: `http://127.0.0.1:${(upstream.address() as AddressInfo).port}`,
+    allowInsecureLoopback: true,
     path: "/k7x2qm4a",
     maxBodyBytes: 1_048_576,
     timeoutMs: 2_000,
@@ -87,13 +93,24 @@ afterAll(() => {
 function post(
   path: string,
   body: Buffer,
-  options: { chunked?: boolean; abortAfterMs?: number } = {},
+  options: {
+    chunked?: boolean;
+    abortAfterMs?: number;
+    headers?: Record<string, string | undefined>;
+  } = {},
 ): Promise<{ status?: number; text?: string; error?: string }> {
   return new Promise((resolve) => {
     const headers: Record<string, string> = {
       "content-type": "application/json",
       "x-api-key": "fly_pk_development_test",
+      origin: "https://shop.test",
     };
+    if (options.headers) {
+      for (const [k, v] of Object.entries(options.headers)) {
+        if (v === undefined) delete headers[k];
+        else headers[k] = v;
+      }
+    }
     if (!options.chunked) headers["content-length"] = String(body.length);
     const req = http.request(
       { host: "127.0.0.1", port: appPort, method: "POST", path, headers },
@@ -130,7 +147,39 @@ describe("Node handler", () => {
     seen.length = 0;
     const r = await post("/k7x2qm4a", Buffer.from('{"sdk":{}}'));
     expect(r).toEqual({ status: 200, text: '{"request_id":"one"}' });
-    expect(seen).toEqual([{ ip: "127.0.0.1", bytes: 10 }]);
+    expect(seen).toMatchObject([
+      { ip: "127.0.0.1", bytes: 10, rawBody: '{"sdk":{}}' },
+    ]);
+  });
+
+  it("refuses originless Node requests with 400 missing_origin and forwards native SDK requests verbatim", async () => {
+    seen.length = 0;
+    const missing = await post("/k7x2qm4a", Buffer.from("{}"), {
+      headers: {
+        origin: undefined,
+        "x-fingerly-origin": "https://forged.test",
+      },
+    });
+    expect(missing.status).toBe(400);
+    expect(JSON.parse(missing.text ?? "{}")).toMatchObject({
+      error: { code: "missing_origin", status: 400 },
+    });
+    expect(seen).toHaveLength(0);
+
+    const raw = '{"v":3,"signals":{"latency":142.50}}';
+    const nativeRes = await post("/k7x2qm4a", Buffer.from(raw), {
+      headers: {
+        origin: undefined,
+        "x-fingerly-sdk-platform": "android",
+        "idempotency-key": "idem-node-native-001",
+      },
+    });
+    expect(nativeRes.status).toBe(200);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.rawBody).toBe(raw);
+    expect(seen[0]?.headers["x-fingerly-sdk-platform"]).toBe("android");
+    expect(seen[0]?.headers["x-fingerly-origin"]).toBeUndefined();
+    expect(seen[0]?.headers["idempotency-key"]).toBe("idem-node-native-001");
   });
 
   it("leaves a failing next handler's rejection to the framework", async () => {
@@ -191,6 +240,7 @@ describe("Node handler", () => {
           headers: {
             "content-type": "application/json",
             "x-api-key": "fly_pk_development_test",
+            origin: "https://shop.test",
           },
         },
         (res) => {
@@ -209,7 +259,7 @@ describe("Node handler", () => {
   it("uses a body the framework buffered, and refuses one it discarded", async () => {
     seen.length = 0;
     expect((await post("/buffered", Buffer.from('{"a":1}'))).status).toBe(200);
-    expect(seen).toEqual([{ ip: "127.0.0.1", bytes: 7 }]);
+    expect(seen).toMatchObject([{ ip: "127.0.0.1", bytes: 7 }]);
     const parsed = await post("/parsed", Buffer.from('{"a":1}'));
     expect(parsed.status).toBe(500);
     expect(parsed.text).toBe(

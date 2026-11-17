@@ -74,6 +74,71 @@ export function normalizeOrigin(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
+/** Printable ASCII only: no space, control byte, CR or LF anywhere. */
+const PRINTABLE = /^[\x21-\x7e]+$/;
+
+/**
+ * A bare origin as written: scheme, `//`, an authority without `/`, `\`,
+ * `?`, `#` or `@`, and at most one trailing slash.
+ */
+const BARE_ORIGIN = /^https?:\/\/[^/\\?#@]+\/?$/i;
+
+/** The only hosts a plain HTTP upstream may name, and only when allowed. */
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/**
+ * Validates an API origin that receives a key: the proxy's `upstream` or the
+ * client's `endpoint`.
+ *
+ * Only scheme, host and optional port are accepted. Plain HTTP is accepted
+ * only when `allowInsecureLoopback` is set and the host is 127.0.0.1,
+ * localhost or [::1], for a local development API. The value is never
+ * echoed in the error, and the returned origin is rebuilt from the parsed
+ * parts, never taken from the input string.
+ *
+ * @param name The option name, used in the error message.
+ * @returns The origin, such as `https://api.fingerly.io`.
+ * @throws {TypeError} If the value is anything else.
+ */
+export function normalizeApiOrigin(
+  value: string,
+  allowInsecureLoopback = false,
+  name: "upstream" | "endpoint" = "upstream",
+): string {
+  const shape = `${name} must be https://host or https://host:port, with no path, query, fragment or credentials`;
+  if (
+    typeof value !== "string" ||
+    !PRINTABLE.test(value) ||
+    !BARE_ORIGIN.test(value)
+  )
+    throw new TypeError(shape);
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new TypeError(shape);
+  }
+  if (
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    url.pathname !== "/" ||
+    url.hostname === ""
+  )
+    throw new TypeError(shape);
+  if (url.protocol === "https:") return url.origin;
+  if (
+    url.protocol === "http:" &&
+    allowInsecureLoopback === true &&
+    LOOPBACK_HOSTS.has(url.hostname)
+  )
+    return url.origin;
+  throw new TypeError(
+    `${name} must use https; plain http is accepted only for 127.0.0.1, localhost or [::1] with allowInsecureLoopback`,
+  );
+}
+
 /**
  * Validates an API route version before it is spliced into a URL.
  *

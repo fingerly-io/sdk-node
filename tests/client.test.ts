@@ -86,7 +86,10 @@ describe("Fingerly class API", () => {
     const request = () =>
       new Request("https://shop.test/k7x2qm4a", {
         method: "POST",
-        headers: { "x-api-key": "fly_pk_development_test" },
+        headers: {
+          "x-api-key": "fly_pk_development_test",
+          origin: "https://shop.test",
+        },
         body: "{}",
       });
     const { handle } = new FingerlyProxy(options);
@@ -134,7 +137,10 @@ describe("API version configuration", () => {
     const request = () =>
       new Request("https://shop.test/k7x2qm4a", {
         method: "POST",
-        headers: { "x-api-key": "fly_pk_development_test" },
+        headers: {
+          "x-api-key": "fly_pk_development_test",
+          origin: "https://shop.test",
+        },
         body: "{}",
       });
     expect((await proxy(request())).status).toBe(200);

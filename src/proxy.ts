@@ -1,6 +1,7 @@
 import { isIP } from "node:net";
 import {
   DEFAULT_ENDPOINT,
+  normalizeApiOrigin,
   normalizeApiVersion,
   normalizeOrigin,
   parseKey,
@@ -25,10 +26,52 @@ const DEFAULT_MAX_BODY_BYTES = 1_048_576;
 const DEFAULT_TIMEOUT_MS = 5_000;
 
 /** What this proxy reports itself as upstream; shown per proxy in the dashboard. */
-const PROXY_VERSION = "node/0.2.0";
+const PROXY_VERSION = "node/0.3.0";
 
 /** Statuses that must not carry a body. */
 const BODILESS_STATUSES = new Set([204, 205, 304]);
+
+/**
+ * Exact lowercase native and bridge SDK platform identifiers allowed through
+ * the sanitize-and-restore header sequence.
+ */
+const VALID_SDK_PLATFORMS = new Set([
+  "ios",
+  "android",
+  "react-native",
+  "react-native-ios",
+  "react-native-android",
+  "flutter",
+  "flutter-ios",
+  "flutter-android",
+  "lynx-ios",
+  "lynx-android",
+  "capacitor",
+  "kotlin-multiplatform",
+]);
+
+/** Browser fetch-metadata and client-hint headers forwarded verbatim when present. */
+const CLIENT_METADATA_HEADERS = [
+  "sec-fetch-site",
+  "sec-fetch-mode",
+  "sec-fetch-dest",
+  "sec-ch-ua",
+  "sec-ch-ua-mobile",
+  "sec-ch-ua-platform",
+];
+
+const CORS_ALLOW_HEADERS =
+  "content-type, x-api-key, idempotency-key, x-fingerly-sdk-platform";
+const CORS_EXPOSE_HEADERS =
+  "x-request-id, ratelimit-limit, ratelimit-remaining, retry-after";
+
+const MISSING_ORIGIN_BODY = JSON.stringify({
+  error: {
+    code: "missing_origin",
+    message: "Origin header is required",
+    status: 400,
+  },
+});
 
 /**
  * The response headers relayed to the browser, and nothing else. A content
@@ -74,6 +117,8 @@ export class FingerlyProxy {
   private readonly maxBodyBytes: number;
   /** Deadline for reading the body, resolving the IP and forwarding. */
   private readonly timeoutMs: number;
+  /** Configured cross-origin allowlist; empty for same-origin routes. */
+  private readonly allowedOrigins: ReadonlySet<string>;
   /** HTTP implementation for the upstream call. */
   private readonly fetchImpl: typeof fetch;
   /** Customer callback resolving the visitor IP from trusted infrastructure. */
@@ -91,9 +136,16 @@ export class FingerlyProxy {
       throw new TypeError("clientIp is required");
 
     this.#key = options.proxyKey || undefined;
+    if (
+      options.allowInsecureLoopback !== undefined &&
+      typeof options.allowInsecureLoopback !== "boolean"
+    )
+      throw new TypeError("allowInsecureLoopback must be a boolean");
     this.upstreamUrl =
-      normalizeOrigin(options.upstream ?? DEFAULT_ENDPOINT) +
-      `/api/${normalizeApiVersion(options.apiVersion)}/ingest`;
+      normalizeApiOrigin(
+        options.upstream ?? DEFAULT_ENDPOINT,
+        options.allowInsecureLoopback === true,
+      ) + `/api/${normalizeApiVersion(options.apiVersion)}/ingest`;
     this.path = options.path === undefined ? null : normalizePath(options.path);
     this.maxBodyBytes = positiveInt(
       options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES,
@@ -103,6 +155,7 @@ export class FingerlyProxy {
       options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       "timeoutMs",
     );
+    this.allowedOrigins = parseAllowedOrigins(options.allowedOrigins);
     this.clientIp = options.clientIp;
     if (options.onError !== undefined && typeof options.onError !== "function")
       throw new TypeError("onError must be a function");
@@ -121,7 +174,7 @@ export class FingerlyProxy {
    *   before any forwarding.
    */
   readonly handle = (request: Request): Promise<Response> =>
-    this.forward(request, {});
+    this.forward(request, {}, request.method);
 
   /**
    * Handles one request from a Node server: Express, NestJS (Express or
@@ -140,7 +193,7 @@ export class FingerlyProxy {
     serveNode(
       {
         path: this.path,
-        forward: (request, peer) => this.forward(request, peer),
+        forward: (request, peer, method) => this.forward(request, peer, method),
         misconfigured: (problem, message) =>
           this.reportOnce(problem, { kind: "misconfigured", message }),
       },
@@ -154,30 +207,56 @@ export class FingerlyProxy {
    *
    * @param peer What the server knows about the TCP connection, passed to
    *   `clientIp`; empty where the framework does not expose it.
+   * @param method The method as it arrived. Fetch's `Request` uppercases
+   *   `post`, so the Node handler passes the raw one to keep the match exact.
    */
-  private async forward(request: Request, peer: ProxyPeer): Promise<Response> {
+  private async forward(
+    request: Request,
+    peer: ProxyPeer,
+    method: string,
+  ): Promise<Response> {
     const url = new URL(request.url);
     // Exactly the issued path: no prefix, no trailing or doubled slash, no
     // encoded characters, case-sensitive. Dot segments were already resolved
     // when the URL was parsed; the Node handler refuses them before that.
     if (this.path !== null && url.pathname !== this.path)
       return refuse(404, "Not Found");
-    if (request.method !== "POST")
-      return refuse(405, "Method Not Allowed", { allow: "POST" });
+
+    const origin = (request.headers.get("origin") ?? "").trim();
+    const cors =
+      origin !== "" && this.allowedOrigins.has(origin) ? origin : null;
+    // Case-sensitive: `post` is not POST.
+    if (method === "OPTIONS" && cors !== null) return preflight(cors);
+    if (method !== "POST")
+      return refuse(
+        405,
+        "Method Not Allowed",
+        { allow: this.allowedOrigins.size > 0 ? "POST, OPTIONS" : "POST" },
+        cors,
+      );
 
     const scope = this.validatedScope();
     if (scope === null)
       return refuse(
         500,
         "Proxy misconfigured: the proxy key is missing or invalid",
+        {},
+        cors,
       );
 
     const apiKey = this.upstreamKeyFor(scope, request.headers.get("x-api-key"));
-    if (apiKey === null) return refuse(401, "Unauthorized");
+    if (apiKey === null) return refuse(401, "Unauthorized", {}, cors);
+
+    // Step 1-4: Capture validated x-fingerly-sdk-platform before stripping all
+    // incoming x-fingerly-* headers, and enforce the origin / native gate.
+    const rawPlatform = request.headers.get("x-fingerly-sdk-platform") ?? "";
+    const sdkPlatform = VALID_SDK_PLATFORMS.has(rawPlatform) ? rawPlatform : "";
+    if (origin === "" && sdkPlatform === "")
+      return jsonRefuse(400, MISSING_ORIGIN_BODY, cors);
 
     // Refuse on the declared size first; readBody enforces the real one.
     if (Number(request.headers.get("content-length")) > this.maxBodyBytes)
-      return refuse(413, "Payload Too Large");
+      return refuse(413, "Payload Too Large", {}, cors);
 
     try {
       return await withDeadline(
@@ -187,8 +266,9 @@ export class FingerlyProxy {
           // The address first: a bad callback must not cost a body read.
           const headers = await this.upstreamHeaders(
             request,
-            url,
             apiKey,
+            origin,
+            sdkPlatform,
             peer,
           );
           const body = await readLimited(
@@ -196,7 +276,7 @@ export class FingerlyProxy {
             this.maxBodyBytes,
             signal,
           );
-          if (body === null) return refuse(413, "Payload Too Large");
+          if (body === null) return refuse(413, "Payload Too Large", {}, cors);
           const response = await this.fetchImpl(this.upstreamUrl, {
             method: "POST",
             headers,
@@ -204,11 +284,27 @@ export class FingerlyProxy {
             redirect: "manual",
             signal,
           });
-          return await relay(response, signal);
+          // A redirect is never followed, and never relayed: the key went to
+          // the pinned URL only. A replacement fetch that ignored "manual"
+          // shows as `redirected` or a different final URL.
+          const unusable =
+            response.redirected ||
+            (response.url !== "" && response.url !== this.upstreamUrl)
+              ? "redirect"
+              : response.status < 200 ||
+                  response.status > 599 ||
+                  (response.status >= 300 && response.status <= 399)
+                ? "status"
+                : null;
+          if (unusable !== null) {
+            response.body?.cancel().catch(() => {});
+            throw new UpstreamUnusable(unusable);
+          }
+          return await relay(response, signal, cors);
         },
       );
     } catch (error) {
-      return this.gatewayFailure(request, error);
+      return this.gatewayFailure(request, error, cors);
     }
   }
 
@@ -219,7 +315,11 @@ export class FingerlyProxy {
    * The visitor having gone is not a failure: the upstream call was cancelled
    * with it and there is nobody to answer, so nothing is logged.
    */
-  private gatewayFailure(request: Request, error: unknown): Response {
+  private gatewayFailure(
+    request: Request,
+    error: unknown,
+    cors: string | null,
+  ): Response {
     if (error instanceof ClientIpUnusable) {
       this.reportOnce("client-ip", {
         kind: "misconfigured",
@@ -228,18 +328,21 @@ export class FingerlyProxy {
       return refuse(
         500,
         "Proxy misconfigured: the client IP callback returned no valid address",
+        {},
+        cors,
       );
     }
-    if (request.signal.aborted) return refuse(499, "Client Closed Request");
+    if (request.signal.aborted)
+      return refuse(499, "Client Closed Request", {}, cors);
     if (error instanceof FingerlyTimeoutError) {
       this.report({
         kind: "timeout",
         message: `request did not complete within ${this.timeoutMs} ms`,
       });
-      return refuse(504, "Gateway timeout");
+      return refuse(504, "Gateway timeout", {}, cors);
     }
     this.report({ kind: "upstream", message: describe(error) });
-    return refuse(502, "Bad gateway");
+    return refuse(502, "Bad gateway", {}, cors);
   }
 
   /** One concise line per failure: the hook if given, else the console. */
@@ -326,33 +429,42 @@ export class FingerlyProxy {
   }
 
   /**
-   * Builds the upstream headers.
-   *
-   * Nothing is copied wholesale: only the body's content type, the visitor
-   * metadata Fingerly needs, and an idempotency key when the SDK sent one.
+   * Builds the upstream headers from scratch so incoming `x-fingerly-*`,
+   * `cookie` and `authorization` headers never cross the proxy boundary.
    *
    * @throws {ClientIpUnusable} If `clientIp` throws or returns anything but
    *   one IPv4 or IPv6 address.
    */
   private async upstreamHeaders(
     request: Request,
-    url: URL,
     apiKey: string,
+    origin: string,
+    sdkPlatform: string,
     peer: ProxyPeer,
   ): Promise<Headers> {
     const clientIp = await resolveClientIp(this.clientIp, request, peer);
 
     const headers = new Headers({
-      "content-type": request.headers.get("content-type") ?? "application/json",
+      "content-type": request.headers.get("content-type") || "application/json",
       "x-api-key": apiKey,
       "x-fingerly-client-ip": clientIp,
-      "x-fingerly-origin": request.headers.get("origin") ?? url.origin,
       "x-fingerly-user-agent": request.headers.get("user-agent") ?? "",
       "x-fingerly-proxy-version": PROXY_VERSION,
     });
     headers.set("x-fingerly-proxy-key", this.#key!);
+    // One channel only: a browser Origin wins over a platform claim, as on the
+    // API, which refuses a proxied request carrying both.
+    if (origin !== "") headers.set("x-fingerly-origin", origin);
+    else if (sdkPlatform !== "")
+      headers.set("x-fingerly-sdk-platform", sdkPlatform);
+    const host = (request.headers.get("host") ?? "").trim();
+    if (host !== "") headers.set("x-fingerly-host", host);
     const idempotencyKey = request.headers.get("idempotency-key");
     if (idempotencyKey) headers.set("idempotency-key", idempotencyKey);
+    for (const name of CLIENT_METADATA_HEADERS) {
+      const value = request.headers.get(name);
+      if (value) headers.set(name, value);
+    }
     return headers;
   }
 }
@@ -428,41 +540,129 @@ class UpstreamResponseTooLarge extends Error {
   }
 }
 
+/** An upstream answer the proxy will not relay: a redirect or a bad status. */
+class UpstreamUnusable extends Error {
+  constructor(readonly reason: "redirect" | "status") {
+    super(reason);
+  }
+}
+
 /** Configuration problems already reported by this process. */
 const reported = new Set<string>();
 
+/** Error codes that only say a connection could not be made or kept. */
+const CONNECT_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "EPIPE",
+  "UND_ERR_SOCKET",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
+
 /**
- * A one-line description of a transport failure, without stack or body:
- * `fetch failed (ECONNREFUSED)` rather than the error object.
+ * A one-line description of a failure that names only its kind, such as
+ * `upstream request failed: connect (ECONNREFUSED)`. Error messages are never
+ * copied: they can carry the upstream host, port or URL.
  */
 function describe(error: unknown): string {
-  if (error instanceof UpstreamResponseTooLarge) return error.message;
-  if (!(error instanceof Error)) return "upstream request failed";
-  const cause = (error as { cause?: { code?: unknown; message?: unknown } })
-    .cause;
-  const detail =
-    typeof cause?.code === "string"
+  if (error instanceof UpstreamResponseTooLarge)
+    return "upstream request failed: too_large";
+  if (error instanceof UpstreamUnusable)
+    return `upstream request failed: ${error.reason}`;
+  const cause = (error as { cause?: { code?: unknown } } | null)?.cause;
+  const code =
+    typeof cause?.code === "string" && /^[A-Z0-9_]{1,40}$/.test(cause.code)
       ? cause.code
-      : typeof cause?.message === "string"
-        ? cause.message
-        : "";
-  return `upstream request failed: ${error.message}${detail ? ` (${detail})` : ""}`;
+      : "";
+  const kind = CONNECT_CODES.has(code)
+    ? "connect"
+    : /^(ERR_TLS|ERR_SSL|CERT_|UNABLE_TO|SELF_SIGNED|DEPTH_ZERO|HOSTNAME_MISMATCH)/.test(
+          code,
+        )
+      ? "tls"
+      : "other";
+  return `upstream request failed: ${kind}${code ? ` (${code})` : ""}`;
+}
+
+/** Validates configured cross-origin browser origins. */
+function parseAllowedOrigins(
+  origins: readonly string[] | undefined,
+): ReadonlySet<string> {
+  const out = new Set<string>();
+  if (origins === undefined) return out;
+  if (!Array.isArray(origins))
+    throw new TypeError("allowedOrigins must be an array of origin strings");
+  for (const raw of origins) {
+    if (typeof raw !== "string")
+      throw new TypeError("allowedOrigins entries must be strings");
+    const normalized = normalizeOrigin(raw.trim());
+    if (new URL(normalized).origin !== normalized)
+      throw new TypeError("allowedOrigins entries must be bare origins");
+    out.add(normalized);
+  }
+  return out;
+}
+
+/** Applies cross-origin CORS headers when an allowed origin matched. */
+function applyCors(headers: Headers, cors: string | null): Headers {
+  if (cors !== null) {
+    headers.set("access-control-allow-origin", cors);
+    headers.set("vary", "Origin");
+    headers.set("access-control-allow-methods", "POST, OPTIONS");
+    headers.set("access-control-allow-headers", CORS_ALLOW_HEADERS);
+    headers.set("access-control-expose-headers", CORS_EXPOSE_HEADERS);
+  }
+  return headers;
+}
+
+/** Answers a matched cross-origin preflight request. */
+function preflight(cors: string): Response {
+  const headers = applyCors(
+    new Headers({
+      "cache-control": "no-store",
+      allow: "POST, OPTIONS",
+    }),
+    cors,
+  );
+  return new Response(null, { status: 204, headers });
 }
 
 /** Builds a plain-text refusal that never reaches Fingerly. */
 function refuse(
   status: number,
   message: string,
-  headers: HeadersInit = {},
+  extra: HeadersInit = {},
+  cors: string | null = null,
 ): Response {
-  return new Response(message, {
-    status,
-    headers: {
+  const headers = applyCors(
+    new Headers({
       "content-type": "text/plain; charset=utf-8",
       "cache-control": "no-store",
-      ...headers,
-    },
-  });
+      ...extra,
+    }),
+    cors,
+  );
+  return new Response(message, { status, headers });
+}
+
+/** Builds a structured JSON refusal before upstream forwarding. */
+function jsonRefuse(
+  status: number,
+  body: string,
+  cors: string | null = null,
+): Response {
+  const headers = applyCors(
+    new Headers({
+      "content-type": "application/json",
+      "cache-control": "no-store",
+    }),
+    cors,
+  );
+  return new Response(body, { status, headers });
 }
 
 /**
@@ -479,10 +679,11 @@ function refuse(
 async function relay(
   response: Response,
   signal: AbortSignal,
+  cors: string | null = null,
 ): Promise<Response> {
   const bytes = await readLimited(response.body, MAX_RESPONSE_BYTES, signal);
   if (bytes === null) throw new UpstreamResponseTooLarge();
-  const headers = new Headers({ "cache-control": "no-store" });
+  const headers = applyCors(new Headers({ "cache-control": "no-store" }), cors);
   for (const name of RELAYED_HEADERS) {
     const value = response.headers.get(name);
     if (value !== null) headers.set(name, value);

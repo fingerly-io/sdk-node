@@ -91,7 +91,10 @@ describe("release metadata", () => {
     await proxy(
       new Request("https://shop.test/k7x2qm4a", {
         method: "POST",
-        headers: { "x-api-key": "fly_pk_development_public" },
+        headers: {
+          "x-api-key": "fly_pk_development_public",
+          origin: "https://shop.test",
+        },
         body: "{}",
       }),
     );
@@ -250,7 +253,7 @@ describe("same-origin proxy", () => {
     expect(response.status).toBe(200);
     expect(upstream?.url).toBe("https://api.fingerly.io/api/v1/ingest");
     expect(upstream?.headers.get("x-fingerly-proxy-version")).toBe(
-      "node/0.2.0",
+      "node/0.3.0",
     );
     expect(upstream?.headers.get("x-fingerly-client-ip")).toBe("203.0.113.10");
     expect(upstream?.headers.get("x-fingerly-origin")).toBe(
@@ -305,7 +308,10 @@ describe("same-origin proxy", () => {
         await proxy(
           new Request("https://shop.test/k7x2qm4a", {
             method: "POST",
-            headers: { "x-api-key": "fly_pk_development_public" },
+            headers: {
+              "x-api-key": "fly_pk_development_public",
+              origin: "https://shop.test",
+            },
             body: "long",
           }),
         )

@@ -1,3 +1,4 @@
+import { DeviceCheckClient } from "./device-check.js";
 import { EventsClient } from "./events.js";
 import { FingerlyProxy } from "./proxy.js";
 import { APITransport } from "./transport.js";
@@ -23,13 +24,17 @@ import type {
 export class Fingerly {
   /** Event reads under this client's secret key. */
   readonly events: EventsClient;
+  /** Apple DeviceCheck bits of an iOS event's device, under the same key. */
+  readonly deviceCheck: DeviceCheckClient;
 
   /**
    * @param options Secret key, plus optional endpoint, version and deadline.
    * @throws {TypeError} If any option is invalid. Nothing is sent until then.
    */
   constructor(options: FingerlyOptions) {
-    this.events = new EventsClient(new APITransport(options));
+    const transport = new APITransport(options);
+    this.events = new EventsClient(transport);
+    this.deviceCheck = new DeviceCheckClient(transport);
   }
 
   /**

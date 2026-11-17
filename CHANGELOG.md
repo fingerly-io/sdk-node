@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.3.0
+
+- Added `fingerly.events.verify(requestId, { maxAgeSeconds, tag, consume })`,
+  which reads an event and checks that it exists, is recent (300 seconds by
+  default), carries the expected `tag`, is identifiable and was scored, then
+  consumes it once, answering `{ ok, reason, event }`; and
+  `fingerly.events.consume(requestId)`, which throws
+  `FingerlyEventAlreadyConsumedError` (`event_already_consumed`, with
+  `consumedAt`) after the first call.
+- Added `fingerly.deviceCheck.query(requestId)` and
+  `fingerly.deviceCheck.write(requestId, { bit0?, bit1? })`, which spend the
+  DeviceCheck token held for an iOS event to read or set the device's two
+  bits. They retry the identical request after a `503` or a transport
+  failure, and `FingerlyAPIError.appleStatus` carries Apple's status on
+  `apple_rejected`.
+- Refreshed the vendored v3 OpenAPI and contract fixtures, removing retired
+  deferred supplement routes and types, and added `EventDocument`,
+  `Attestation`, and `SignalName` types covering all v3 signals
+  (`attestation_failed`, `attestation_downgrade`, `device_inconsistent`,
+  `report_incomplete`, `probe_errors`, `fetch_metadata_missing`,
+  `web_ticket_missing`, `web_ticket_invalid`, `tampering`, `custom_root_ca`,
+  `secondary_user_profile`), `attest_skipped` and
+  `downgrade` on `Attestation`, and empty `visitor_id` (`""`) on
+  unidentifiable events.
+- Updated `FingerlyProxy` to enforce the single-path `proxy.md` relay contract:
+  sanitize-and-restore validation of `x-fingerly-sdk-platform`, rejection with
+  HTTP `400` (`missing_origin`) when both `Origin` and a valid
+  `x-fingerly-sdk-platform` are absent (never synthesising `x-fingerly-origin`),
+  forwarding of `Sec-Fetch-*` and `Sec-CH-UA-*` client metadata headers,
+  optional cross-origin CORS `allowedOrigins`, and verbatim raw-byte body
+  forwarding.
+- `FingerlyProxy` requires `proxyKey`, answers `401` with `no-store` unless
+  the caller's `X-Api-Key` is a public key of the proxy key's environment, and
+  never sends a secret key upstream.
+
 ## 0.2.0
 
 - Events carry `project_id`, the Fingerly project an event belongs to, on

@@ -87,7 +87,7 @@ export interface APIErrorMetadata {
  * and any occurrence of the secret key in the metadata is redacted.
  */
 export class FingerlyAPIError extends Error {
-  override readonly name = "FingerlyAPIError";
+  override readonly name: string = "FingerlyAPIError";
 
   static override [Symbol.hasInstance](value: unknown): boolean {
     return branded(value, "FingerlyAPIError");
@@ -124,4 +124,78 @@ export class FingerlyAPIError extends Error {
   get isPending(): boolean {
     return this.code === "event_pending";
   }
+
+  /**
+   * Apple's HTTP status for `422 apple_rejected` on a DeviceCheck call, read
+   * from the `apple_status` entry of `details`; null for any other error.
+   */
+  get appleStatus(): number | null {
+    if (this.code !== "apple_rejected" || !Array.isArray(this.details))
+      return null;
+    for (const entry of this.details as unknown[]) {
+      const detail = entry as { field?: unknown; issue?: unknown } | null;
+      if (detail?.field !== "apple_status" || typeof detail.issue !== "string")
+        continue;
+      return /^\d{3}$/.test(detail.issue) ? Number(detail.issue) : null;
+    }
+    return null;
+  }
 }
+
+/**
+ * Raised by `fingerly.events.consume` (`409 event_already_consumed`) when the
+ * event was consumed by an earlier call. A kind of {@link FingerlyAPIError}
+ * with `status` 409 and `code` `event_already_consumed`.
+ */
+export class FingerlyEventAlreadyConsumedError extends FingerlyAPIError {
+  override readonly name: string = "FingerlyEventAlreadyConsumedError";
+
+  static override [Symbol.hasInstance](value: unknown): boolean {
+    return branded(value, "FingerlyEventAlreadyConsumedError");
+  }
+
+  /**
+   * When the first call consumed the event (RFC 3339, as the API sent it), or
+   * null when the answer did not say.
+   */
+  readonly consumedAt: string | null;
+
+  /**
+   * @param message Human-readable summary.
+   * @param status The HTTP status code, 409.
+   * @param metadata Structured detail parsed from the error body.
+   * @param consumedAt When the event was first consumed, if known.
+   */
+  constructor(
+    message: string,
+    status: number,
+    metadata: APIErrorMetadata,
+    consumedAt: string | null,
+  ) {
+    super(message, status, metadata);
+    brand(this, "FingerlyEventAlreadyConsumedError");
+    this.consumedAt = consumedAt;
+  }
+}
+
+/**
+ * The `code` of a {@link FingerlyAPIError} from `fingerly.deviceCheck`.
+ *
+ * - `device_check_not_held` (404): no token is held for the event.
+ * - `device_check_spent` (409): the token was used, or a retry was not the
+ *   first request.
+ * - `device_check_busy` (409): another call is using the token.
+ * - `credential_unavailable` (409): the project's Apple key is missing,
+ *   refused, or has DeviceCheck off; the token is kept.
+ * - `bits_required` (422): a write named neither bit.
+ * - `apple_rejected` (422): Apple rejected the token; see `appleStatus`.
+ * - `device_check_unavailable` (503): retried automatically, then thrown.
+ */
+export type DeviceCheckErrorCode =
+  | "device_check_not_held"
+  | "device_check_spent"
+  | "device_check_busy"
+  | "credential_unavailable"
+  | "bits_required"
+  | "apple_rejected"
+  | "device_check_unavailable";

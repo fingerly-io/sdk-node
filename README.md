@@ -7,7 +7,7 @@
   </a>
 </p>
 
-<p align="center"><b>Fingerly for Node.js</b><br>Read events, verify webhooks and serve a first-party proxy from your Node.js backend, with no runtime dependencies.</p>
+<p align="center"><b>Fingerly for Node.js</b><br>Read and verify events, verify webhooks and serve a first-party proxy for browser and native client SDKs from your Node.js backend, with no runtime dependencies.</p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@fingerly/node"><img src="https://img.shields.io/npm/v/@fingerly/node?style=flat-square" alt="npm version"></a>
@@ -21,7 +21,7 @@
 
 ## What is this
 
-`@fingerly/node` is the server-side Node.js package for [Fingerly](https://fingerly.io), which identifies the device behind every web and app session and scores how suspicious it is. Use it to protect signups, logins and payments: read the event the browser SDK produced with a server-only secret key, verify webhook signatures, and serve the browser SDK from a path on your own site with a same-origin proxy.
+`@fingerly/node` is the server-side Node.js package for [Fingerly](https://fingerly.io), which identifies the device behind every web and app session and scores how suspicious it is. Use it to protect signups, logins and payments: read and verify the event a client SDK produced with a server-only secret key, spend iOS DeviceCheck bits, verify webhook signatures, and relay browser and native client SDK traffic from a path on your own site with a first-party proxy.
 
 Node.js 18.16 or newer. No runtime dependencies.
 
@@ -32,7 +32,7 @@ Node.js 18.16 or newer. No runtime dependencies.
 **2. Install.**
 
 ```sh
-npm install @fingerly/node
+npm install @fingerly/node@^0.3.0
 ```
 
 **3. Read an event.**
@@ -63,7 +63,9 @@ Full documentation: [docs.fingerly.io/docs/sdks/node](https://docs.fingerly.io/d
 
 | I want to | Go to |
 | --- | --- |
-| Read an event, or verify a backend action | [Read events](#read-events) |
+| Read an event | [Read events](#read-events) |
+| Check and consume a request id before a backend action | [Verify a backend action](#verify-a-backend-action) |
+| Run a once-per-device check on iOS | [DeviceCheck bits on iOS](#devicecheck-bits-on-ios) |
 | Check a webhook signature | [Verify webhooks](#verify-webhooks) |
 | Keep identification working behind content blockers | [First-party proxy](#first-party-proxy) |
 | Mount the proxy in Next.js, Express, NestJS, Fastify, Koa or Hono | [Frameworks](#frameworks) |
@@ -72,6 +74,7 @@ Full documentation: [docs.fingerly.io/docs/sdks/node](https://docs.fingerly.io/d
 
 - [Read events](#read-events)
 - [Verify a backend action](#verify-a-backend-action)
+- [DeviceCheck bits on iOS](#devicecheck-bits-on-ios)
 - [Verify webhooks](#verify-webhooks)
 - [First-party proxy](#first-party-proxy)
 - [Frameworks](#frameworks)
@@ -83,7 +86,7 @@ Full documentation: [docs.fingerly.io/docs/sdks/node](https://docs.fingerly.io/d
 
 ## Read events
 
-Create the client once and reuse it. Event reads need a `fly_sk_{production|staging|development}_…` key. The key is checked on the first request, not when the client is created, so a build that runs without secrets can still load the module; a public, proxy, malformed or missing key makes that request reject with a `TypeError` before any network access. Requests go to `https://api.fingerly.io`; `endpoint` overrides that for a local API, and `apiVersion` selects a route version (`v1` by default).
+Create the client once and reuse it. Event reads need a `fly_sk_{production|staging|development}_…` key. The key is checked on the first request, not when the client is created, so a build that runs without secrets can still load the module; a public, proxy, malformed or missing key makes that request reject with a `TypeError` before any network access. Requests go to `https://api.fingerly.io`; `endpoint` overrides that, and `apiVersion` selects a route version (`v1` by default). `endpoint` must be a bare HTTPS origin, `https://host` or `https://host:port`: a path, query, fragment, credentials, whitespace or control byte throws when the client is created, and the error never repeats the value. Plain `http://` is refused, except for `127.0.0.1`, `localhost` or `[::1]` when you also pass `allowInsecureLoopback: true` for a local development API.
 
 A 404 from `get` carries one of two codes:
 
@@ -92,7 +95,9 @@ A 404 from `get` carries one of two codes:
 | `event_pending` (`error.isPending` is `true`) | The request id was accepted but its event is not recorded yet. It is not a verdict. Try again after `error.retryAfter` seconds, or verify asynchronously, for example from a webhook. |
 | `event_not_found` | The request id was never issued for this key's environment, or the event is past the 30-day retention. |
 
-`suspect_score: null` means unscored and must not be treated as zero. The archived `document` arrives moments after the event: check `has_document` rather than assuming.
+`suspect_score: null` means unscored and must not be treated as zero. When a submission is unidentifiable (`event.identifiable === false`, such as insufficient entropy, a genuine embedded WebView, or an unmatched high-risk Web payload), `event.visitor_id` is `""` rather than a minted identifier. There are no `deferred_token`, `deferred_signals` or `supplements` fields on `v: 3` responses.
+
+The archived `document` (`EventDocument | null`, including platform-neutral `attestation: Attestation` and `risk.triggers`) arrives moments after the event: check `has_document` rather than assuming. `EventTrigger.signal` is typed as `SignalName`, including the `v: 3` anti-spoofing and integrity signals `"attestation_failed"`, `"attestation_downgrade"`, `"device_inconsistent"`, `"report_incomplete"`, `"probe_errors"`, `"fetch_metadata_missing"`, `"web_ticket_missing"`, `"web_ticket_invalid"`, `"tampering"`, `"custom_root_ca"` and `"secondary_user_profile"`. A native `attestation` also carries `attest_skipped` (the app's reason for sending no proof) and `downgrade` (the report named an install an attested device owns).
 
 `get` and `list` each make one request and never retry. One deadline (`timeoutMs`, 5000 by default) covers connecting, the response and its body. Both accept an `AbortSignal` (`list` through its options) and keep the caller's abort reason. Redirects are never followed. Failures are always one of these:
 
@@ -121,9 +126,66 @@ try {
 
 ## Verify a backend action
 
-Read the event with a server-only key. Check that its tag matches your action, that it is recent, that its environment is correct, and that it was scored. Apply your own policy to the server's verdict. Do not authorize an action using scores or visitor identifiers supplied by the browser. Tags correlate events; they do not replace your application's authentication or replay protection. Never put a personal identifier (user ID, email, install ID, advertising ID) in a tag: the server keeps tag values in long-lived rollups. An `event_pending` error means the server has not decided yet: retry after `retryAfter` seconds or verify asynchronously, and do not refuse the action as fraud on that answer alone.
+A `requestId` posted by the browser is untrusted input until your backend verifies it. `fingerly.events.verify` reads the event with the server-only key and checks it, in this order, stopping at the first failure:
+
+| `reason` | The event is refused when |
+| --- | --- |
+| `not_found` | no event exists for the request id (`404 event_not_found`) |
+| `too_old` | `occurred_at` is more than `maxAgeSeconds` ago (300 by default), or is missing or unreadable |
+| `tag_mismatch` | you passed `tag` and the event's `tag` is not exactly that value |
+| `unidentifiable` | `visitor_id` is `""` |
+| `unscored` | `suspect_score` is `null` |
+| `already_consumed` | an earlier call consumed the event |
+
+When every other check passes, `verify` consumes the event as its last step (`POST /api/v1/events/{request_id}/consume`), so one event backs one decision and a replayed `requestId` answers `already_consumed`. Pass `consume: false` to check without consuming. `ok` is true and `reason` is `""` only when every check passed. `event` is the event read, `null` only for `not_found`.
+
+`verify` never judges the score: apply your own policy to the event once `ok` is true. Do not authorize an action using scores or visitor identifiers supplied by the browser. Tags correlate events; they do not replace your application's authentication. Never put a personal identifier (user ID, email, install ID, advertising ID) in a tag: the server keeps tag values in long-lived rollups. See [server-side verification](https://docs.fingerly.io/docs/server-side-verification).
+
+```ts
+const { ok, reason, event } = await fingerly.events.verify(requestId, {
+  maxAgeSeconds: 120,
+  tag: "signup",
+});
+if (!ok) {
+  // reason: not_found, too_old, tag_mismatch, unidentifiable, unscored or
+  // already_consumed. Step up or review.
+} else if (event!.suspect_level !== "low") {
+  // Your policy: step up or review anything but a low score.
+} else if (event!.triggers.some((t) => t.signal === "attestation_failed")) {
+  // Hardware attestation failed cryptographic or ownership verification.
+}
+```
+
+`404 event_pending` is thrown rather than turned into a reason: the server has not decided yet. Retry after `retryAfter` seconds or verify asynchronously, and do not refuse the action as fraud on that answer alone. Any other failure is thrown as it would be from `events.get`, and nothing is consumed.
+
+`fingerly.events.consume(requestId)` consumes an event directly. The first call answers `{ request_id, consumed_at, first: true }`; any later one throws `FingerlyEventAlreadyConsumedError` (a kind of `FingerlyAPIError`, `status` 409, `code` `event_already_consumed`) whose `consumedAt` says when. It is one request and never retried.
 
 `project_id` on an event from `events.get`, and on every row from `events.list`, is the Fingerly project the event belongs to. It is absent when an older server does not send it.
+
+## DeviceCheck bits on iOS
+
+When DeviceCheck is turned on for your project's Apple key, an iOS identification holds an Apple DeviceCheck token for one hour. The token pays for exactly one Apple call: `fingerly.deviceCheck.query` reads the device's two bits, `fingerly.deviceCheck.write` sets them, never both. Apple treats a token as single-use, so a "check, then mark" flow such as a once-per-device free trial spends two identifications:
+
+1. On the identification that asks for the trial, query the bits.
+2. If they say the device had one, refuse. Otherwise grant the trial and record
+   the grant in your own data; until the bit is written, that record is what
+   stops a second trial.
+3. On the next identification from that install, write the bit.
+
+```ts
+// bit0 means "this device has had a free trial". The meaning is yours.
+const bits = await fingerly.deviceCheck.query(trialRequestId);
+if (bits.found && bits.bit0) return "offer-paid-plan";
+await trials.grant({ accountId, deviceMarked: false });
+
+// Later, with the request ID of the app's next identification:
+await fingerly.deviceCheck.write(markRequestId, { bit0: true });
+await trials.update(accountId, { deviceMarked: true });
+```
+
+Errors are `FingerlyAPIError` with a `DeviceCheckErrorCode` in `code`: `device_check_not_held` (404, no token: decide without the bits), `device_check_spent`, `device_check_busy`, `credential_unavailable` (409), `bits_required`, `apple_rejected` (422, Apple's HTTP status in `appleStatus`) and `device_check_unavailable` (503). A write naming no bit is refused with a `TypeError` before anything is sent.
+
+After a `503` or a transport failure the SDK resends the identical request, twice at most. A token kept after such an answer accepts only the request it was first used for: retry with the same method and bits, or the API answers `device_check_spent`.
 
 ## Verify webhooks
 
@@ -131,29 +193,56 @@ The example under [Getting started](#getting-started) calls `Fingerly.verifyWebh
 
 Verify the exact raw bytes before JSON parsing: re-serialising parsed JSON changes the digest. Signatures cover the timestamp and body, and the default replay tolerance is 300 seconds. During a signing-secret rotation any one of the first 32 comma-separated signatures may match. Verification does not deduplicate, so persist processed webhook ids. The [framework guides](#frameworks) show where each framework keeps the raw body.
 
-The `identification.completed` and `visitor.suspect` payloads carry `data.project_id`, the project the event belongs to; `identification.refused` carries it only when the refused request named a known key. The SDK verifies signatures only and does not model payload fields.
+The `identification.completed` and `visitor.suspect` payloads carry `data.project_id`, the project the event belongs to, and `data.visitor_id` (`""` when `data.identifiable === false`); `identification.refused` carries `data.project_id` only when the refused request named a known key. The SDK verifies signatures only and does not model payload fields.
 
 ## First-party proxy
 
-The proxy serves the browser SDK from a path on your own site, which is what gets it past content blockers. Create a proxy in the dashboard (**Integration > Proxy keys**), mount the handler at the exact path it issued, and point the browser SDK at that path with `endpoints: "/k7x2qm4a"`.
+The proxy relays browser and native client SDK requests from a path on your own site, getting browser calls past content blockers and keeping native traffic on your own domain. Create a proxy in the dashboard (**Integration > Proxy keys**), mount the handler at the exact path it issued, and point the client SDK at that path with `endpoints: "/k7x2qm4a"`.
 
-The proxy forwards to Fingerly's one ingest URL with the browser's public key, your proxy key and the visitor's address. It never forwards cookies or authorization headers. It relays back only `content-type`, `x-request-id` and the rate limit headers (`retry-after` included), so nothing on the response names Fingerly, and marks every response `no-store`. It answers:
+Client SDKs send a single `POST` identification envelope to that path, and the proxy forwards the raw request body bytes verbatim (never JSON-decoded or re-serialized, and with no `/supplement` subpath) to `https://api.fingerly.io/api/v1/ingest` (`apiVersion` and `upstream` override the route version and upstream origin), with your proxy key and the visitor's address. Incoming headers follow the `v: 3` sanitize-and-restore sequence:
+
+1. Captures `X-Fingerly-SDK-Platform` only if it matches an exact lowercase
+   native or bridge platform (`ios`, `android`, `react-native`,
+   `react-native-ios`, `react-native-android`, `flutter`, `flutter-ios`,
+   `flutter-android`, `lynx-ios`, `lynx-android`, `capacitor`,
+   `kotlin-multiplatform`).
+2. Strips **all** incoming `X-Fingerly-*` headers alongside `Cookie` and
+   `Authorization`. A request with an `Origin` is sent upstream as a browser
+   request, with `X-Fingerly-Origin` only; without one, the validated
+   `X-Fingerly-SDK-Platform` is restored. Never both.
+3. Rejects locally with **400** (`missing_origin`) when both `Origin` and a
+   validated `X-Fingerly-SDK-Platform` are absent, and never synthesizes
+   `X-Fingerly-Origin` from `Host`, `Referer` or the request URL.
+4. Forwards `X-Api-Key`, `Content-Type`, `User-Agent`, `Idempotency-Key`,
+   `Sec-Fetch-*` (`Sec-Fetch-Site`, `Sec-Fetch-Mode`, `Sec-Fetch-Dest`),
+   `Sec-CH-UA-*` (`Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`) and
+   `X-Fingerly-Host`.
+
+The upstream is checked when the proxy is created and answers are checked before they are relayed:
+
+- Plain `http://` is refused, except for `127.0.0.1`, `localhost` or `[::1]` when you also pass `allowInsecureLoopback: true` for a local development API.
+- Redirects are never followed: any `3xx` from upstream, or a response a replacement `fetchImpl` followed to another URL, is answered **502**. A `fetchImpl` you supply must honour `redirect: "manual"`.
+- An upstream status outside 200 to 599 is answered **502**.
+- `upstream` must be a bare origin, `https://host` or `https://host:port`: a path, query, fragment, credentials, whitespace or control byte throws, and the error never repeats the value.
+
+It relays back only `content-type`, `x-request-id`, `ratelimit-limit`, `ratelimit-remaining` and `retry-after`, so nothing on the response names Fingerly, and marks every response `Cache-Control: no-store`. Pass `allowedOrigins` to accept cross-origin browser `POST` and `OPTIONS` preflight requests. It answers:
 
 | Status | When |
 | --- | --- |
-| **404** | Any path but the issued one: no prefix, trailing or doubled slash, dot segment or encoded character, and case-sensitive. A Fetch route sees the URL after the runtime resolved dot segments, so only the Node handler can refuse those; the raw path never reaches anything but ingest either way. |
-| **401** | The browser's public key is missing or for another environment. Answered without calling upstream. |
-| **405** | Anything but `POST`. Answered without calling upstream. |
+| **404** | Any path but the issued one (a `/supplement` subpath included): no prefix, trailing or doubled slash, dot segment or encoded character, and case-sensitive. A Fetch route sees the URL after the runtime resolved dot segments, so only the Node handler can refuse those; the raw path never reaches anything but ingest either way. |
+| **400** | `missing_origin`: neither `Origin` nor a validated `X-Fingerly-SDK-Platform` header is present. Answered without calling upstream. |
+| **401** | The caller's public key is missing or for another environment. Answered without calling upstream. |
+| **405** | Anything but `POST` (and `OPTIONS` when `allowedOrigins` is configured), compared case-sensitively by the Node handler so `post` is refused. Answered without calling upstream. |
 | **413** | Bodies over 1 MiB (`maxBodyBytes`). Answered without calling upstream. |
 | **504** | The exchange takes longer than `timeoutMs` (5000 by default). |
-| **502** | The upstream is unreachable, resets, or answers more than 4 MiB. |
+| **502** | The upstream is unreachable, resets, redirects, answers a status outside 200 to 599, or answers more than 4 MiB. |
 | **500** | The proxy is misconfigured, with a one-line message: the proxy key is missing or invalid, or `clientIp` returned anything but one IP address. This is logged once per process, not per request. |
 
-The handler never throws, so your framework never turns an outage into a 500 with a stack trace. Each failure is one line on `console.error`, or passed to `onError` if you give one.
+The handler never throws, so your framework never turns an outage into a 500 with a stack trace. Each failure is one line on `console.error`, or passed to `onError` if you give one. The line names the kind of failure only (`connect`, `tls`, `redirect`, `status`, `too_large` or `other`), never the upstream host, URL or key.
 
 When the visitor disconnects, the upstream call is cancelled and nothing is logged. The proxy key, like the secret key, is checked on the first request, so a build without secrets can load the route module.
 
-The proxy reports itself upstream as `node/0.2.0`, which the dashboard shows per proxy.
+The proxy reports itself upstream as `node/0.3.0`, which the dashboard shows per proxy.
 
 <details>
 <summary>Proxy options</summary>
@@ -167,8 +256,10 @@ The proxy reports itself upstream as `node/0.2.0`, which the dashboard shows per
 | `timeoutMs` | Deadline covering the body read, IP lookup and upstream call. 5000 by default. |
 | `onError` | Receives one concise line per failure, for your own logger. Without it failures go to `console.error`. |
 | `apiVersion` | API route version forwarded upstream. `v1` by default. |
-| `upstream` | Overrides the upstream origin implied by the key. |
-| `fetchImpl` | Replacement `fetch` for the upstream call. |
+| `upstream` | Overrides the upstream origin implied by the key. A bare origin, `https://host` or `https://host:port`. |
+| `allowInsecureLoopback` | Accepts a plain `http://` upstream on `127.0.0.1`, `localhost` or `[::1]`, for a local development API. `false` by default. |
+| `allowedOrigins` | Bare origins whose cross-origin browser `POST` and `OPTIONS` preflight requests are accepted. |
+| `fetchImpl` | Replacement `fetch` for the upstream call. Must honour `redirect: "manual"`. |
 
 </details>
 
@@ -361,7 +452,7 @@ The vendored synthetic contract snapshot makes tests independent of sibling repo
 <details>
 <summary>Source structure</summary>
 
-`client.ts` composes the public `Fingerly` class. `events.ts` owns event reads and the list filters; `transport.ts` owns authenticated HTTP and API errors. `proxy.ts` handles the proxy path, headers and failures, and `node.ts` adapts Node servers to it. `body.ts` reads bodies under a size cap. `webhooks.ts` verifies signatures. `config.ts` validates caller-supplied options. Shared public types, errors, redaction and cancellation helpers live in `types.ts`, `errors.ts`, `redact.ts` and `deadline.ts`. `index.ts` only exposes the public API. `load()`, `createProxy()`, `createNodeProxy()` and `verifyWebhook()` are also exported as functions; `load(options)` returns a `Fingerly` instance.
+`client.ts` composes the public `Fingerly` class. `events.ts` owns event reads, verification and the list filters, and `device-check.ts` the DeviceCheck spends; `transport.ts` owns authenticated HTTP and API errors. `proxy.ts` handles the proxy path, headers and failures, and `node.ts` adapts Node servers to it. `body.ts` reads bodies under a size cap. `webhooks.ts` verifies signatures. `config.ts` validates caller-supplied options. Shared public types, errors, redaction and cancellation helpers live in `types.ts`, `errors.ts`, `redact.ts` and `deadline.ts`. `index.ts` only exposes the public API. `load()`, `createProxy()`, `createNodeProxy()` and `verifyWebhook()` are also exported as functions; `load(options)` returns a `Fingerly` instance.
 
 </details>
 

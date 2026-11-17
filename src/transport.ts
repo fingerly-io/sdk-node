@@ -1,23 +1,66 @@
 import {
   DEFAULT_ENDPOINT,
+  normalizeApiOrigin,
   normalizeApiVersion,
-  normalizeOrigin,
   parseKey,
   positiveInt,
 } from "./config.js";
 import { withDeadline } from "./deadline.js";
 import { MAX_RESPONSE_BYTES, readLimited } from "./body.js";
-import { FingerlyAPIError, FingerlyConnectionError } from "./errors.js";
+import {
+  FingerlyAPIError,
+  FingerlyConnectionError,
+  FingerlyEventAlreadyConsumedError,
+} from "./errors.js";
 import type { APIErrorMetadata } from "./errors.js";
 import { REDACTED, inspectCustom } from "./redact.js";
 import type { FingerlyOptions } from "./types.js";
 
 const DEFAULT_TIMEOUT_MS = 5_000;
+/** Retries of a DeviceCheck spend after a `503` or a transport failure. */
+const SPEND_RETRIES = 2;
+/** Base pause before a retry; the nth retry waits n times this. */
+const RETRY_DELAY_MS = 200;
+
+/** Waits `ms`, or rejects with the signal's reason when it aborts first. */
+function pause(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal!.reason);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 /** Shape of the API's error envelope; every field is treated as untrusted. */
 interface ErrorBody {
-  error?: { code?: unknown; details?: unknown };
+  error?: { code?: unknown; details?: unknown; consumed_at?: unknown };
+  code?: unknown;
+  consumed_at?: unknown;
   request_id?: unknown;
+}
+
+/**
+ * When an `event_already_consumed` answer says the event was consumed: a
+ * top-level `consumed_at`, one inside `error`, or a `consumed_at` detail.
+ */
+function consumedAtOf(body: ErrorBody | null): string | null {
+  if (typeof body?.consumed_at === "string") return body.consumed_at;
+  if (typeof body?.error?.consumed_at === "string")
+    return body.error.consumed_at;
+  if (Array.isArray(body?.error?.details))
+    for (const entry of body.error.details as unknown[]) {
+      const detail = entry as { field?: unknown; issue?: unknown } | null;
+      if (detail?.field === "consumed_at" && typeof detail.issue === "string")
+        return detail.issue;
+    }
+  return null;
 }
 
 /**
@@ -47,7 +90,16 @@ export class APITransport {
    *   before any network access when it is not a secret key.
    */
   constructor(options: FingerlyOptions) {
-    const origin = normalizeOrigin(options.endpoint ?? DEFAULT_ENDPOINT);
+    if (
+      options.allowInsecureLoopback !== undefined &&
+      typeof options.allowInsecureLoopback !== "boolean"
+    )
+      throw new TypeError("allowInsecureLoopback must be a boolean");
+    const origin = normalizeApiOrigin(
+      options.endpoint ?? DEFAULT_ENDPOINT,
+      options.allowInsecureLoopback === true,
+      "endpoint",
+    );
     const apiVersion = normalizeApiVersion(options.apiVersion);
 
     this.baseUrl = `${origin}/api/${apiVersion}`;
@@ -71,6 +123,58 @@ export class APITransport {
    *   connection drops mid-response.
    */
   get<T>(path: string, signal?: AbortSignal): Promise<T> {
+    return this.send<T>("GET", path, undefined, signal);
+  }
+
+  /**
+   * Performs one POST without a body and parses its JSON answer. Never
+   * retries, so a lost answer is never sent twice.
+   *
+   * @param path Path below the versioned base URL, already encoded.
+   * @param signal Caller cancellation; its reason is preserved.
+   */
+  post<T>(path: string, signal?: AbortSignal): Promise<T> {
+    return this.send<T>("POST", path, undefined, signal);
+  }
+
+  /**
+   * Sends one POST or PUT with an optional JSON body, retrying the identical
+   * request only after a `503` or a transport failure (timeouts included), at
+   * most {@link SPEND_RETRIES} times. Any other answer is returned or thrown
+   * as is. Used for spends that the API allows to be retried only unchanged.
+   *
+   * @param method `POST` or `PUT`.
+   * @param path Path below the versioned base URL, already encoded.
+   * @param body JSON value to send, serialised once for every attempt.
+   * @param signal Caller cancellation; it stops further attempts.
+   */
+  async retrySame<T>(
+    method: "POST" | "PUT",
+    path: string,
+    body: unknown,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const payload = body === undefined ? undefined : JSON.stringify(body);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.send<T>(method, path, payload, signal);
+      } catch (error) {
+        const retryable =
+          error instanceof FingerlyConnectionError ||
+          (error instanceof FingerlyAPIError && error.status === 503);
+        if (!retryable || attempt >= SPEND_RETRIES || signal?.aborted)
+          throw error;
+        await pause(RETRY_DELAY_MS * (attempt + 1), signal);
+      }
+    }
+  }
+
+  private send<T>(
+    method: string,
+    path: string,
+    payload: string | undefined,
+    signal?: AbortSignal,
+  ): Promise<T> {
     // Validated on use rather than at construction, so a build without
     // secrets can load the module that creates the client. A public, proxy or
     // management key still never reaches the network, whatever the endpoint.
@@ -83,14 +187,18 @@ export class APITransport {
       let response: Response;
       let bytes: Buffer | null;
       try {
+        const headers: Record<string, string> = {
+          "x-api-key": this.#secretKey!,
+          accept: "application/json",
+        };
+        if (payload !== undefined) headers["content-type"] = "application/json";
         // Read at call time: a client made at module scope predates a
         // framework's fetch patch, and the framework must see `no-store` to
         // treat this read as dynamic.
         response = await (this.fetchImpl ?? fetch)(this.baseUrl + path, {
-          headers: {
-            "x-api-key": this.#secretKey!,
-            accept: "application/json",
-          },
+          method,
+          headers,
+          ...(payload !== undefined ? { body: payload } : {}),
           redirect: "manual",
           // Frameworks that patch fetch (Next.js) otherwise serve a read from
           // their cache, or freeze it into a build, as a stale event.
@@ -140,12 +248,19 @@ export class APITransport {
     bytes: Buffer | null,
   ): FingerlyAPIError {
     const metadata: APIErrorMetadata = {};
+    let consumedAt: string | null = null;
     try {
       const body = JSON.parse(
         bytes?.toString("utf8") ?? "",
       ) as ErrorBody | null;
       if (typeof body?.error?.code === "string")
         metadata.code = this.redact(body.error.code);
+      else if (typeof body?.code === "string")
+        metadata.code = this.redact(body.code);
+      if (metadata.code === "event_already_consumed") {
+        const at = consumedAtOf(body);
+        consumedAt = at === null ? null : this.redact(at);
+      }
       if (body?.error?.details !== undefined)
         // A JSON round-trip redacts nested values without walking the tree.
         metadata.details = JSON.parse(
@@ -157,6 +272,13 @@ export class APITransport {
       // A non-JSON, oversized or truncated body still reports its HTTP
       // status, and its contents are deliberately dropped.
     }
+    if (metadata.code === "event_already_consumed")
+      return new FingerlyEventAlreadyConsumedError(
+        `Fingerly API returned HTTP ${response.status}`,
+        response.status,
+        this.headerMetadata(response, metadata),
+        consumedAt,
+      );
     return new FingerlyAPIError(
       `Fingerly API returned HTTP ${response.status}`,
       response.status,
