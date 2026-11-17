@@ -130,12 +130,19 @@ export type AttestationState =
  * Diagnostic only; it never lowers the score.
  */
 export const AttestSkippedReason = {
+  /** The challenge offered no attestation: on iOS the SDK key has no Apple app ID for App Attest, on Android the app's transport returned no challenge offer. */
   NotOffered: "not_offered",
+  /** The device cannot make an attested key: App Attest is not supported on the iOS device, or Android is older than 7.0 (API 24). */
   Unsupported: "unsupported",
+  /** No usable challenge ticket: the challenge request failed, or on Android the ticket it returned was malformed. */
   ChallengeUnavailable: "challenge_unavailable",
+  /** The platform key store failed to create, attest or sign with the key, or on Android the stored key record could not be read. */
   KeyError: "key_error",
+  /** Attestation did not finish in time: a key store call ran past its budget, or another identification held the attestation step too long. */
   Timeout: "timeout",
+  /** The server rejected a new key from this install (on iOS, also when it asked for a replacement), and the SDK is waiting out a backoff before it registers another. */
   Backoff: "backoff",
+  /** The report has no usable install ID, or on iOS the stored key record could not be read or saved. */
   InstallUnavailable: "install_unavailable",
 } as const;
 /** One of the reasons in {@link AttestSkippedReason}. */
