@@ -53,7 +53,8 @@ check `has_document` rather than assuming. `EventTrigger.signal` is typed as
 `SignalName`, including the `v: 3` anti-spoofing and integrity signals
 `"attestation_failed"`, `"attestation_downgrade"`, `"device_inconsistent"`,
 `"report_incomplete"`, `"probe_errors"`, `"fetch_metadata_missing"`,
-`"tampering"`, `"custom_root_ca"` and `"secondary_user_profile"`. A native
+`"web_ticket_missing"`, `"web_ticket_invalid"`, `"tampering"`,
+`"custom_root_ca"` and `"secondary_user_profile"`. A native
 `attestation` also carries `attest_skipped` (the app's reason for sending no
 proof) and `downgrade` (the report named an install an attested device owns).
 
