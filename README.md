@@ -38,11 +38,11 @@ npm install @fingerly/node@^0.3.0
 **3. Read an event.**
 
 ```ts
-import { Fingerly } from "@fingerly/node";
+import { Fingerly, SuspectLevel } from "@fingerly/node";
 
 const fingerly = new Fingerly({ secretKey: process.env.FINGERLY_SECRET_KEY });
 
-const page = await fingerly.events.list({ limit: 50, level: "high" });
+const page = await fingerly.events.list({ limit: 50, level: SuspectLevel.High });
 const event = await fingerly.events.get(requestId);
 ```
 
@@ -97,7 +97,22 @@ A 404 from `get` carries one of two codes:
 
 `suspect_score: null` means unscored and must not be treated as zero. When a submission is unidentifiable (`event.identifiable === false`, such as insufficient entropy, a genuine embedded WebView, or an unmatched high-risk Web payload), `event.visitor_id` is `""` rather than a minted identifier. There are no `deferred_token`, `deferred_signals` or `supplements` fields on `v: 3` responses.
 
-The archived `document` (`EventDocument | null`, including platform-neutral `attestation: Attestation` and `risk.triggers`) arrives moments after the event: check `has_document` rather than assuming. `EventTrigger.signal` is typed as `SignalName`, including the `v: 3` anti-spoofing and integrity signals `"attestation_failed"`, `"attestation_downgrade"`, `"device_inconsistent"`, `"report_incomplete"`, `"probe_errors"`, `"fetch_metadata_missing"`, `"web_ticket_missing"`, `"web_ticket_invalid"`, `"tampering"`, `"custom_root_ca"` and `"secondary_user_profile"`. A native `attestation` also carries `attest_skipped` (the app's reason for sending no proof) and `downgrade` (the report named an install an attested device owns).
+The archived `document` (`EventDocument | null`, including platform-neutral `attestation: Attestation` and `risk.triggers`) arrives moments after the event: check `has_document` rather than assuming. `EventTrigger.signal` is typed as `SignalName`, including the `v: 3` anti-spoofing and integrity signals `"attestation_failed"`, `"attestation_downgrade"`, `"device_inconsistent"`, `"report_incomplete"`, `"probe_errors"`, `"fetch_metadata_missing"`, `"web_ticket_missing"`, `"web_ticket_invalid"`, `"tampering"`, `"custom_root_ca"` and `"secondary_user_profile"`. Event `triggers` carry signal groups, such as `vpn`; `document.risk.triggers` carry the raw signals behind them, such as `vpn_public`. A native `attestation` also carries `attest_skipped` (the app's reason for sending no proof) and `downgrade` (the report named an install an attested device owns).
+
+Every closed set of values has a runtime constant with a same-named type: `Signal`, `SuspectLevel`, `Confidence`, `EventState`, `Platform`, `Environment`, `AnonymityNetwork`, `DeviceKind`, `VisitorKind`, `AttestationState`, `AttestationStatus`, `AttestSkippedReason`, `VerifyReason`, `DeviceCheckErrorCode`, `WebhookEventType` and `ProxyFailureKind`. A member is its value in PascalCase, word by word (`Signal.FingerprintSuppressed` is `"fingerprint_suppressed"`). Fields the server fills are typed open, such as `SuspectLevel | (string & {})`, so comparing with the constant or with the string both compile, and a value a newer server adds still reaches your code.
+
+```ts
+import { Signal, SuspectLevel } from "@fingerly/node";
+
+const event = await fingerly.events.get(requestId);
+if (event.suspect_level === SuspectLevel.High) {
+  // Hold for review.
+}
+const signals = event.triggers.map((trigger) => trigger.signal);
+if (signals.includes(Signal.FingerprintSuppressed)) {
+  // The report was too thin to identify anyone.
+}
+```
 
 `get` and `list` each make one request and never retry. One deadline (`timeoutMs`, 5000 by default) covers connecting, the response and its body. Both accept an `AbortSignal` (`list` through its options) and keep the caller's abort reason. Redirects are never followed. Failures are always one of these:
 
@@ -137,11 +152,13 @@ A `requestId` posted by the browser is untrusted input until your backend verifi
 | `unscored` | `suspect_score` is `null` |
 | `already_consumed` | an earlier call consumed the event |
 
-When every other check passes, `verify` consumes the event as its last step (`POST /api/v1/events/{request_id}/consume`), so one event backs one decision and a replayed `requestId` answers `already_consumed`. Pass `consume: false` to check without consuming. `ok` is true and `reason` is `""` only when every check passed. `event` is the event read, `null` only for `not_found`.
+When every other check passes, `verify` consumes the event as its last step (`POST /api/v1/events/{request_id}/consume`), so one event backs one decision and a replayed `requestId` answers `already_consumed`. Pass `consume: false` to check without consuming. `ok` is true and `reason` is `""` (`VerifyReason.Ok`) only when every check passed. `event` is the event read, `null` only for `not_found`.
 
 `verify` never judges the score: apply your own policy to the event once `ok` is true. Do not authorize an action using scores or visitor identifiers supplied by the browser. Tags correlate events; they do not replace your application's authentication. Never put a personal identifier (user ID, email, install ID, advertising ID) in a tag: the server keeps tag values in long-lived rollups. See [server-side verification](https://docs.fingerly.io/docs/server-side-verification).
 
 ```ts
+import { Signal, SuspectLevel, VerifyReason } from "@fingerly/node";
+
 const { ok, reason, event } = await fingerly.events.verify(requestId, {
   maxAgeSeconds: 120,
   tag: "signup",
@@ -149,9 +166,10 @@ const { ok, reason, event } = await fingerly.events.verify(requestId, {
 if (!ok) {
   // reason: not_found, too_old, tag_mismatch, unidentifiable, unscored or
   // already_consumed. Step up or review.
-} else if (event!.suspect_level !== "low") {
+  if (reason === VerifyReason.AlreadyConsumed) console.log("replayed request id");
+} else if (event!.suspect_level !== SuspectLevel.Low) {
   // Your policy: step up or review anything but a low score.
-} else if (event!.triggers.some((t) => t.signal === "attestation_failed")) {
+} else if (event!.triggers.some((t) => t.signal === Signal.AttestationFailed)) {
   // Hardware attestation failed cryptographic or ownership verification.
 }
 ```
@@ -183,7 +201,7 @@ await fingerly.deviceCheck.write(markRequestId, { bit0: true });
 await trials.update(accountId, { deviceMarked: true });
 ```
 
-Errors are `FingerlyAPIError` with a `DeviceCheckErrorCode` in `code`: `device_check_not_held` (404, no token: decide without the bits), `device_check_spent`, `device_check_busy`, `credential_unavailable` (409), `bits_required`, `apple_rejected` (422, Apple's HTTP status in `appleStatus`) and `device_check_unavailable` (503). A write naming no bit is refused with a `TypeError` before anything is sent.
+Errors are `FingerlyAPIError` with a `DeviceCheckErrorCode` in `code` (compare with the `DeviceCheckErrorCode` constant, such as `DeviceCheckErrorCode.DeviceCheckNotHeld`): `device_check_not_held` (404, no token: decide without the bits), `device_check_spent`, `device_check_busy`, `credential_unavailable` (409), `bits_required`, `apple_rejected` (422, Apple's HTTP status in `appleStatus`) and `device_check_unavailable` (503). A write naming no bit is refused with a `TypeError` before anything is sent.
 
 After a `503` or a transport failure the SDK resends the identical request, twice at most. A token kept after such an answer accepts only the request it was first used for: retry with the same method and bits, or the API answers `device_check_spent`.
 
@@ -193,7 +211,17 @@ The example under [Getting started](#getting-started) calls `Fingerly.verifyWebh
 
 Verify the exact raw bytes before JSON parsing: re-serialising parsed JSON changes the digest. Signatures cover the timestamp and body, and the default replay tolerance is 300 seconds. During a signing-secret rotation any one of the first 32 comma-separated signatures may match. Verification does not deduplicate, so persist processed webhook ids. The [framework guides](#frameworks) show where each framework keeps the raw body.
 
-The `identification.completed` and `visitor.suspect` payloads carry `data.project_id`, the project the event belongs to, and `data.visitor_id` (`""` when `data.identifiable === false`); `identification.refused` carries `data.project_id` only when the refused request named a known key. The SDK verifies signatures only and does not model payload fields.
+The `identification.completed` and `visitor.suspect` payloads carry `data.project_id`, the project the event belongs to, and `data.visitor_id` (`""` when `data.identifiable === false`); `identification.refused` carries `data.project_id` only when the refused request named a known key. The SDK verifies signatures only and does not model payload fields. After verifying, branch on the payload's `type` with `WebhookEventType`: `IdentificationCompleted`, `IdentificationRefused`, `VisitorSuspect`, `BillingStatusChanged`, `UsageDailySettled`, and `WebhookTest` for a test delivery you asked the dashboard for.
+
+```ts
+import { WebhookEventType } from "@fingerly/node";
+
+if (!valid) return new Response(null, { status: 400 });
+const delivery = JSON.parse(Buffer.from(rawBody).toString("utf8"));
+if (delivery.type === WebhookEventType.VisitorSuspect) {
+  // Review data.visitor_id.
+}
+```
 
 ## First-party proxy
 
@@ -238,7 +266,7 @@ It relays back only `content-type`, `x-request-id`, `ratelimit-limit`, `ratelimi
 | **502** | The upstream is unreachable, resets, redirects, answers a status outside 200 to 599, or answers more than 4 MiB. |
 | **500** | The proxy is misconfigured, with a one-line message: the proxy key is missing or invalid, or `clientIp` returned anything but one IP address. This is logged once per process, not per request. |
 
-The handler never throws, so your framework never turns an outage into a 500 with a stack trace. Each failure is one line on `console.error`, or passed to `onError` if you give one. The line names the kind of failure only (`connect`, `tls`, `redirect`, `status`, `too_large` or `other`), never the upstream host, URL or key.
+The handler never throws, so your framework never turns an outage into a 500 with a stack trace. Each failure is one line on `console.error`, or passed to `onError` if you give one, whose `failure.kind` is `ProxyFailureKind.Timeout` (504), `ProxyFailureKind.Upstream` (502) or `ProxyFailureKind.Misconfigured` (500). The line names the kind of failure only (`connect`, `tls`, `redirect`, `status`, `too_large` or `other`), never the upstream host, URL or key.
 
 When the visitor disconnects, the upstream call is cancelled and nothing is logged. The proxy key, like the secret key, is checked on the first request, so a build without secrets can load the route module.
 
