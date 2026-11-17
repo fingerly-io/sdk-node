@@ -1,102 +1,34 @@
 import type { components } from "./generated/contract.js";
 
+import type {
+  AnonymityNetwork,
+  AttestSkippedReason,
+  AttestationState,
+  AttestationStatus,
+  Confidence,
+  DeviceKind,
+  Environment,
+  EventState,
+  Platform,
+  ProxyFailureKind,
+  Signal,
+  SuspectLevel,
+  VerifyReason,
+  VisitorKind,
+} from "./enums.js";
+
 /**
  * Signal group and raw detector identifiers reported in event triggers and
- * archived risk reports, with open string compatibility for future server
- * additions.
+ * archived risk reports: one of {@link Signal}, or a value a newer server
+ * added.
  */
-export type SignalName =
-  | "tor"
-  | "datacenter_proxy"
-  | "proxy"
-  | "datacenter_ip"
-  | "residential_proxy"
-  | "residential_proxy_low_confidence"
-  | "residential_proxy_medium_confidence"
-  | "residential_proxy_high_confidence"
-  | "vpn"
-  | "vpn_public"
-  | "vpn_timezone"
-  | "vpn_relay"
-  | "vpn_mobile"
-  | "vpn_os_mismatch"
-  | "vpn_low_confidence"
-  | "vpn_medium_confidence"
-  | "vpn_high_confidence"
-  | "ip_blocklist"
-  | "ip_blocklist_email_spam"
-  | "ip_blocklist_attack_source"
-  | "ip_reputation"
-  | "ip_abuser"
-  | "network_anomaly"
-  | "bogon_ip"
-  | "anycast_ip"
-  | "location_spoofing"
-  | "geo_mismatch"
-  | "ios_simulator"
-  | "simulator"
-  | "android_emulator"
-  | "emulator"
-  | "virtual_machine"
-  | "jailbroken_device"
-  | "jailbreak"
-  | "rooted_device"
-  | "root_apps"
-  | "play_device_integrity_failed"
-  | "cloned_app"
-  | "app_cloner"
-  | "play_app_unrecognized"
-  | "device_farm"
-  | "app_attest_key_churn"
-  | "mitm_attack"
-  | "frida_detected"
-  | "frida"
-  | "browser_tampering"
-  | "tampering"
-  | "antidetect_browser"
-  | "fingerprint_suppressed"
-  | "developer_tools"
-  | "remote_control"
-  | "bot"
-  | "automation"
-  | "bad_bot"
-  | "fetch_metadata_missing"
-  | "web_ticket_missing"
-  | "web_ticket_invalid"
-  | "high_activity"
-  | "incognito_mode"
-  | "incognito"
-  | "privacy_settings"
-  | "embedded_web_view"
-  | "active_call"
-  | "attestation_missing"
-  | "attestation_failed"
-  | "attestation_downgrade"
-  | "device_inconsistent"
-  | "report_incomplete"
-  | "probe_errors"
-  | "custom_root_ca"
-  | "secondary_user_profile"
-  | (string & {});
-
-/** Top-level hardware attestation verdict on native events. */
-export type AttestationState =
-  "attested" | "not_attested" | "failed" | (string & {});
-
-/** Platform-neutral hardware attestation verification status. */
-export type AttestationStatus =
-  | "verified"
-  | "indeterminate"
-  | "invalid"
-  | "absent"
-  | "unconfigured"
-  | (string & {});
+export type SignalName = Signal | (string & {});
 
 /** Platform-neutral hardware attestation verdict inside an archived document. */
 export interface Attestation {
-  state: AttestationState;
-  platform?: string;
-  status: AttestationStatus;
+  state: AttestationState | (string & {});
+  platform?: Platform | (string & {});
+  status: AttestationStatus | (string & {});
   reason?: string;
   chain_length?: number;
   attestation_security_level?: string;
@@ -111,7 +43,7 @@ export interface Attestation {
    * The app's own reason for sending no attestation, such as `not_offered`,
    * `unsupported` or `timeout`. Diagnostic only; it never lowers the score.
    */
-  attest_skipped?: string;
+  attest_skipped?: AttestSkippedReason | (string & {});
   /**
    * True when an unproven or rejected report named an install an attested
    * device owns, so it was answered unidentifiable.
@@ -141,16 +73,16 @@ export interface EventDocument {
   ip?: Record<string, unknown>;
   ip_error?: string;
   risk?: {
-    platform: string;
+    platform: Platform | (string & {});
     score: number;
-    level: string;
+    level: SuspectLevel | (string & {});
     threshold: number;
     source: string;
     revision?: number;
     triggers: Array<{
       signal: SignalName;
       weight: number;
-      confidence?: string;
+      confidence?: Confidence | (string & {});
       reason?: string;
     }>;
   };
@@ -162,9 +94,10 @@ export interface EventDocument {
 /** One signal that contributed to an event's suspect score. */
 export type EventTrigger = Omit<
   components["schemas"]["EventTriggerOut"],
-  "signal"
+  "signal" | "confidence"
 > & {
   signal: SignalName;
+  confidence?: Confidence | (string & {});
 };
 
 /**
@@ -182,9 +115,25 @@ export type EventTrigger = Omit<
  */
 export type Event = Omit<
   components["schemas"]["SDKEventOut"],
-  "suspect_score" | "document" | "triggers"
+  | "suspect_score"
+  | "suspect_level"
+  | "document"
+  | "triggers"
+  | "state"
+  | "platform"
+  | "environment"
+  | "anonymity_network"
+  | "device_kind"
+  | "visitor_kind"
 > & {
   suspect_score: number | null;
+  suspect_level?: SuspectLevel | (string & {});
+  state: EventState | (string & {});
+  platform: Platform | (string & {});
+  environment: Environment | (string & {});
+  anonymity_network?: AnonymityNetwork | (string & {});
+  device_kind?: DeviceKind | (string & {});
+  visitor_kind?: VisitorKind | (string & {});
   triggers: EventTrigger[];
   document?: EventDocument | null;
 };
@@ -207,7 +156,7 @@ export interface EventListOptions {
   /** Restrict to one visitor id. */
   visitor?: string;
   /** Restrict to one suspect level. */
-  level?: "low" | "medium" | "high";
+  level?: SuspectLevel;
   /** Caller cancellation. */
   signal?: AbortSignal;
 }
@@ -333,7 +282,7 @@ export interface ProxyFailure {
    * `misconfigured`: the key or client IP callback is unusable (500); these
    * are reported once per process.
    */
-  kind: "timeout" | "upstream" | "misconfigured";
+  kind: ProxyFailureKind;
   /** One line, without stack, body or credentials. */
   message: string;
 }
@@ -385,25 +334,6 @@ export interface EventConsumption {
   /** Always true: a later call throws `FingerlyEventAlreadyConsumedError`. */
   first: boolean;
 }
-
-/**
- * Why `fingerly.events.verify` refused an event, or `""` when it passed.
- *
- * - `not_found`: no event for the request id (`404 event_not_found`).
- * - `too_old`: `occurred_at` is more than `maxAgeSeconds` ago, or unreadable.
- * - `tag_mismatch`: the event's `tag` is not the `tag` asked for.
- * - `unidentifiable`: the event's `visitor_id` is empty.
- * - `unscored`: the event's `suspect_score` is null.
- * - `already_consumed`: an earlier call consumed the event.
- */
-export type VerifyReason =
-  | ""
-  | "not_found"
-  | "too_old"
-  | "tag_mismatch"
-  | "unidentifiable"
-  | "unscored"
-  | "already_consumed";
 
 /** Options for `fingerly.events.verify`. */
 export interface VerifyOptions {

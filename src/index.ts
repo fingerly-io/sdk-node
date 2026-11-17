@@ -16,11 +16,27 @@ export {
   FingerlyEventAlreadyConsumedError,
   FingerlyTimeoutError,
 } from "./errors.js";
-export type { APIErrorMetadata, DeviceCheckErrorCode } from "./errors.js";
-export type {
-  Attestation,
+export type { APIErrorMetadata } from "./errors.js";
+export {
+  AnonymityNetwork,
+  AttestSkippedReason,
   AttestationState,
   AttestationStatus,
+  Confidence,
+  DeviceCheckErrorCode,
+  DeviceKind,
+  Environment,
+  EventState,
+  Platform,
+  ProxyFailureKind,
+  Signal,
+  SuspectLevel,
+  VerifyReason,
+  VisitorKind,
+  WebhookEventType,
+} from "./enums.js";
+export type {
+  Attestation,
   DeviceCheckBits,
   DeviceCheckWrite,
   DeviceCheckWriteResult,
@@ -39,7 +55,6 @@ export type {
   ProxyPeer,
   SignalName,
   VerifyOptions,
-  VerifyReason,
   VerifyResult,
   VerifyWebhookOptions,
 } from "./types.js";
