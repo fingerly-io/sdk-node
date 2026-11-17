@@ -292,6 +292,19 @@ describe("enum types", () => {
       SuspectLevel | (string & {}) | undefined
     >();
     expectTypeOf<Event["state"]>().toEqualTypeOf<EventState | (string & {})>();
+    expectTypeOf<Event["platform"]>().toEqualTypeOf<Platform | (string & {})>();
+    expectTypeOf<Event["environment"]>().toEqualTypeOf<
+      Environment | (string & {})
+    >();
+    expectTypeOf<Event["anonymity_network"]>().toEqualTypeOf<
+      AnonymityNetwork | (string & {}) | undefined
+    >();
+    expectTypeOf<Event["device_kind"]>().toEqualTypeOf<
+      DeviceKind | (string & {}) | undefined
+    >();
+    expectTypeOf<Event["visitor_kind"]>().toEqualTypeOf<
+      VisitorKind | (string & {}) | undefined
+    >();
     expectTypeOf<EventTrigger["signal"]>().toEqualTypeOf<SignalName>();
     expectTypeOf<EventTrigger["confidence"]>().toEqualTypeOf<
       Confidence | (string & {}) | undefined
