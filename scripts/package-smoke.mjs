@@ -33,7 +33,7 @@ try {
     ],
     { cwd: work, stdio: "inherit" },
   );
-  const assertions = `if (typeof sdk.Fingerly !== 'function' || typeof sdk.Fingerly.verifyWebhook !== 'function' || typeof sdk.Fingerly.createProxy !== 'function') throw new Error('Missing class API'); if (typeof sdk.load !== 'function' || typeof sdk.createProxy !== 'function' || typeof sdk.verifyWebhook !== 'function' || typeof sdk.FingerlyTimeoutError !== 'function') throw new Error('Missing exports'); const c = new sdk.Fingerly({secretKey:'fly_sk_development_smoke'}); if(typeof c.events.get !== 'function' || typeof c.events.list !== 'function') throw new Error('Missing event reads');`;
+  const assertions = `if (typeof sdk.Fingerly !== 'function' || typeof sdk.Fingerly.verifyWebhook !== 'function' || typeof sdk.Fingerly.createProxy !== 'function') throw new Error('Missing class API'); if (typeof sdk.load !== 'function' || typeof sdk.createProxy !== 'function' || typeof sdk.verifyWebhook !== 'function' || typeof sdk.FingerlyTimeoutError !== 'function') throw new Error('Missing exports'); const c = new sdk.Fingerly({secretKey:'fly_sk_development_smoke'}); if(typeof c.events.get !== 'function' || typeof c.events.list !== 'function') throw new Error('Missing event reads'); if (sdk.SuspectLevel.High !== 'high' || sdk.Signal.FingerprintSuppressed !== 'fingerprint_suppressed' || sdk.WebhookEventType.VisitorSuspect !== 'visitor.suspect') throw new Error('Missing enum constants');`;
   execFileSync(
     process.execPath,
     [
@@ -65,7 +65,7 @@ try {
   // Types must resolve for both module systems under every resolution mode a
   // customer may use; a CommonJS project once got the ESM declarations.
   const tsc = resolve("node_modules/typescript/bin/tsc");
-  const usage = `import { Fingerly, createProxy, FingerlyAPIError } from "@fingerly/node";
+  const usage = `import { Fingerly, createProxy, FingerlyAPIError, SuspectLevel } from "@fingerly/node";
 import type { Event } from "@fingerly/node";
 export const client: Fingerly = new Fingerly({ secretKey: "fly_sk_development_x" });
 export const handler: (request: Request) => Promise<Response> = createProxy({
@@ -74,6 +74,9 @@ export const handler: (request: Request) => Promise<Response> = createProxy({
 });
 export const isError = (e: unknown): boolean => e instanceof FingerlyAPIError;
 export type Read = Event;
+export const isHigh = (event: Event): boolean =>
+  event.suspect_level === SuspectLevel.High || event.suspect_level === "high";
+export const level: SuspectLevel = SuspectLevel.Low;
 `;
   for (const [type, module, moduleResolution] of [
     ["commonjs", "node16", "node16"],

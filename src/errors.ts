@@ -177,25 +177,3 @@ export class FingerlyEventAlreadyConsumedError extends FingerlyAPIError {
     this.consumedAt = consumedAt;
   }
 }
-
-/**
- * The `code` of a {@link FingerlyAPIError} from `fingerly.deviceCheck`.
- *
- * - `device_check_not_held` (404): no token is held for the event.
- * - `device_check_spent` (409): the token was used, or a retry was not the
- *   first request.
- * - `device_check_busy` (409): another call is using the token.
- * - `credential_unavailable` (409): the project's Apple key is missing,
- *   refused, or has DeviceCheck off; the token is kept.
- * - `bits_required` (422): a write named neither bit.
- * - `apple_rejected` (422): Apple rejected the token; see `appleStatus`.
- * - `device_check_unavailable` (503): retried automatically, then thrown.
- */
-export type DeviceCheckErrorCode =
-  | "device_check_not_held"
-  | "device_check_spent"
-  | "device_check_busy"
-  | "credential_unavailable"
-  | "bits_required"
-  | "apple_rejected"
-  | "device_check_unavailable";
