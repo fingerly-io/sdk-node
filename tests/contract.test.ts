@@ -89,6 +89,15 @@ describe("server-owned contract fixtures", () => {
       "custom_root_ca",
       "secondary_user_profile",
     ];
+    const v3Groups: SignalName[] = [
+      "attestation_failed",
+      "device_inconsistent",
+      "report_incomplete",
+      "bot",
+      "browser_tampering",
+      "custom_root_ca",
+      "secondary_user_profile",
+    ];
     const attestation: Attestation = {
       state: "attested",
       platform: "android",
@@ -126,7 +135,9 @@ describe("server-owned contract fixtures", () => {
       sdk_version: "0.3.0",
       suspect_score: 25,
       suspect_level: "high",
-      triggers: v3Signals.map((signal) => ({
+      // An event's triggers are its signal groups; the raw signals are in
+      // the document's risk report.
+      triggers: v3Groups.map((signal) => ({
         signal,
         weight: 4,
         confidence: "high",
@@ -145,7 +156,7 @@ describe("server-owned contract fixtures", () => {
     });
     const decoded = await client.events.get(payload.request_id);
     expect(decoded.visitor_id).toBe("");
-    expect(decoded.triggers.map((t) => t.signal)).toEqual(v3Signals);
+    expect(decoded.triggers.map((t) => t.signal)).toEqual(v3Groups);
     expect(decoded.document?.attestation?.status).toBe("verified");
   });
 
