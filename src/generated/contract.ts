@@ -996,20 +996,36 @@ export interface components {
         EventRowOut: {
             agent?: string;
             agent_version?: string;
-            anonymity_network?: string;
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            anonymity_network?: "tor" | "relay" | "vpn" | "proxy" | "hosting";
             asn?: string;
             asn_name?: string;
             country_code?: string;
             country_name?: string;
-            device_kind?: string;
-            environment: string;
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            device_kind?: "desktop" | "mobile" | "tablet" | "server";
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            environment: "production" | "staging" | "development";
             has_document: boolean;
             /** @description The network the request came from: an IPv4 /24 or an IPv6 /40, such as 203.0.113.0/24 */
             ip_network?: string;
             occurred_at: string;
             origin?: string;
             os?: string;
-            platform: string;
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            platform: "web" | "android" | "ios";
             /** @description The project the event belongs to */
             project_id?: string;
             /** @description Why enrichment did not happen, on an unavailable event */
@@ -1017,8 +1033,16 @@ export interface components {
             request_id: string;
             sdk_platform: string;
             sdk_version: string;
-            state: string;
-            suspect_level?: string;
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            state: "enriched" | "unavailable";
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            suspect_level?: "low" | "medium" | "high";
             /** Format: int32 */
             suspect_score?: number | null;
             tag?: string;
@@ -1026,11 +1050,23 @@ export interface components {
             url_host?: string;
             url_path?: string;
             visitor_id: string;
-            visitor_kind?: string;
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            visitor_kind?: "human" | "ai_bot" | "automation" | "search_crawler";
         };
         EventTriggerOut: {
-            confidence?: string;
-            signal: string;
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            confidence?: "low" | "medium" | "high";
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            signal: "tor" | "ios_simulator" | "mitm_attack" | "frida_detected" | "virtual_machine" | "remote_control" | "datacenter_proxy" | "ip_blocklist" | "rooted_device" | "jailbroken_device" | "android_emulator" | "cloned_app" | "browser_tampering" | "fingerprint_suppressed" | "developer_tools" | "device_farm" | "bot" | "ip_reputation" | "residential_proxy" | "privacy_settings" | "embedded_web_view" | "high_activity" | "location_spoofing" | "vpn" | "incognito_mode" | "active_call" | "attestation_missing" | "attestation_failed" | "device_inconsistent" | "report_incomplete" | "custom_root_ca" | "secondary_user_profile" | "network_anomaly";
             /** Format: int32 */
             weight: number;
         };
@@ -1059,10 +1095,16 @@ export interface components {
         IdentifyIn: {
             /** @description Hardware attestation envelope bound to raw signals bytes (v3 native SDKs) */
             attest?: components["schemas"]["AttestEnvelope"] | null;
-            /** @description Native only, and only without attest: why the SDK sent no attestation. One of not_offered, unsupported, challenge_unavailable, key_error, timeout, backoff, install_unavailable. Diagnostic; it never lowers the score */
-            attest_skipped?: string;
-            /** @description The SDK's consent state; must be granted, or the request is refused with consent_required */
-            consent?: string;
+            /**
+             * @description Native only, and only without attest: why the SDK sent no attestation. One of not_offered, unsupported, challenge_unavailable, key_error, timeout, backoff, install_unavailable. Diagnostic; it never lowers the score
+             * @enum {string}
+             */
+            attest_skipped?: "not_offered" | "unsupported" | "challenge_unavailable" | "key_error" | "timeout" | "backoff" | "install_unavailable";
+            /**
+             * @description The SDK's consent state; must be granted, or the request is refused with consent_required
+             * @enum {string}
+             */
+            consent?: "granted";
             /** @description Empty for a report. ticket asks for a web freshness ticket instead: a public key on the web only, with a body of v, op and sdk, answered 200 with ticket and expires_at, never charged */
             op?: string;
             /** @description Which SDK collected these signals */
@@ -1086,8 +1128,11 @@ export interface components {
         IdentifyOut: {
             /** @description Native only, present whenever attest was sent: the key_id the server evaluated, copied from attest.key_id */
             attest_key_id?: string;
-            /** @description Native only, present whenever attest was sent: registered (the key was verified, stored and owns the install), valid (an assertion verified against a stored key), rekey_required (the key is unknown or expired), rejected (attestation failed) */
-            attest_key_status?: string;
+            /**
+             * @description Native only, present whenever attest was sent: registered (the key was verified, stored and owns the install), valid (an assertion verified against a stored key), rekey_required (the key is unknown or expired), rejected (attestation failed). New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            attest_key_status?: "registered" | "valid" | "rekey_required" | "rejected";
             /** @description This submission was answered before; the verdict replays the first one */
             duplicate?: boolean;
             /** @description False when the report carried too little to identify anyone */
@@ -1100,10 +1145,16 @@ export interface components {
             reason?: string;
             /** @description Identifies this submission */
             request_id: string;
-            /** @description Whether the address could be enriched */
-            state: string;
-            /** @description low, medium or high. Absent whenever suspect_score is */
-            suspect_level?: string;
+            /**
+             * @description Whether the address could be enriched. New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            state: "enriched" | "unavailable";
+            /**
+             * @description low, medium or high. Absent whenever suspect_score is. New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            suspect_level?: "low" | "medium" | "high";
             /**
              * Format: int32
              * @description The weighted sum of the signals that fired. Absent when the event was not scored, or from a browser, an app, a proxy or a hosted domain when the key withholds it
@@ -1122,9 +1173,21 @@ export interface components {
             visitor_is_new: boolean;
         };
         IdentifyTriggerOut: {
-            confidence?: string;
-            group?: string;
-            signal: string;
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            confidence?: "low" | "medium" | "high";
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            group?: "tor" | "ios_simulator" | "mitm_attack" | "frida_detected" | "virtual_machine" | "remote_control" | "datacenter_proxy" | "ip_blocklist" | "rooted_device" | "jailbroken_device" | "android_emulator" | "cloned_app" | "browser_tampering" | "fingerprint_suppressed" | "developer_tools" | "device_farm" | "bot" | "ip_reputation" | "residential_proxy" | "privacy_settings" | "embedded_web_view" | "high_activity" | "location_spoofing" | "vpn" | "incognito_mode" | "active_call" | "attestation_missing" | "attestation_failed" | "device_inconsistent" | "report_incomplete" | "custom_root_ca" | "secondary_user_profile" | "network_anomaly";
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            signal: "incognito" | "tampering" | "antidetect_browser" | "automation" | "fetch_metadata_missing" | "web_ticket_missing" | "web_ticket_invalid" | "bad_bot" | "device_farm" | "high_activity" | "virtual_machine" | "fingerprint_suppressed" | "embedded_web_view" | "privacy_settings" | "remote_control" | "developer_tools" | "geo_mismatch" | "device_inconsistent" | "report_incomplete" | "vpn_public" | "vpn_timezone" | "vpn_os_mismatch" | "vpn_relay" | "vpn_low_confidence" | "vpn_medium_confidence" | "vpn_high_confidence" | "tor" | "proxy" | "residential_proxy" | "residential_proxy_low_confidence" | "residential_proxy_medium_confidence" | "residential_proxy_high_confidence" | "ip_blocklist_email_spam" | "ip_blocklist_attack_source" | "ip_abuser" | "datacenter_ip" | "bogon_ip" | "anycast_ip" | "emulator" | "root_apps" | "app_cloner" | "play_device_integrity_failed" | "play_app_unrecognized" | "device_activity_high" | "device_activity_very_high" | "frida" | "mitm_attack" | "active_call" | "attestation_failed" | "attestation_missing" | "attestation_downgrade" | "probe_errors" | "custom_root_ca" | "secondary_user_profile" | "vpn_mobile" | "jailbreak" | "simulator" | "repeated_reinstall";
             /**
              * Format: int64
              * @description What this signal added to the score
@@ -1134,10 +1197,16 @@ export interface components {
         IngestIn: {
             /** @description Hardware attestation envelope bound to raw signals bytes (v3 native SDKs) */
             attest?: components["schemas"]["AttestEnvelope"] | null;
-            /** @description Native only, and only without attest: why the SDK sent no attestation. One of not_offered, unsupported, challenge_unavailable, key_error, timeout, backoff, install_unavailable. Diagnostic; it never lowers the score */
-            attest_skipped?: string;
-            /** @description The SDK's consent state; must be granted, or the request is refused with consent_required */
-            consent?: string;
+            /**
+             * @description Native only, and only without attest: why the SDK sent no attestation. One of not_offered, unsupported, challenge_unavailable, key_error, timeout, backoff, install_unavailable. Diagnostic; it never lowers the score
+             * @enum {string}
+             */
+            attest_skipped?: "not_offered" | "unsupported" | "challenge_unavailable" | "key_error" | "timeout" | "backoff" | "install_unavailable";
+            /**
+             * @description The SDK's consent state; must be granted, or the request is refused with consent_required
+             * @enum {string}
+             */
+            consent?: "granted";
             /** @description Empty for a report. ticket asks for a web freshness ticket instead: a public key on the web only, with a body of v, op and sdk, answered 200 with ticket and expires_at, never charged */
             op?: string;
             /** @description Which SDK collected these signals */
@@ -1230,7 +1299,11 @@ export interface components {
         ProxyCredentialOut: {
             /** Format: date-time */
             created_at: string;
-            environment: string;
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            environment: "production" | "staging" | "development";
             /** Format: date-time */
             expires_at?: string | null;
             id: string;
@@ -1272,14 +1345,19 @@ export interface components {
             defaults: {
                 [key: string]: number;
             };
-            platform: string;
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            platform: "web" | "android" | "ios";
             /** @description method or confidence */
             residential_proxy_weights_mode: string;
             /** Format: int64 */
             revision?: number;
             /** @description key, organization or default */
             scope: string;
-            signals: string[];
+            /** @description New values can be added within API v1, so accept values not listed here. */
+            signals: ("incognito" | "tampering" | "antidetect_browser" | "automation" | "fetch_metadata_missing" | "web_ticket_missing" | "web_ticket_invalid" | "bad_bot" | "device_farm" | "high_activity" | "virtual_machine" | "fingerprint_suppressed" | "embedded_web_view" | "privacy_settings" | "remote_control" | "developer_tools" | "geo_mismatch" | "device_inconsistent" | "report_incomplete" | "vpn_public" | "vpn_timezone" | "vpn_os_mismatch" | "vpn_relay" | "vpn_low_confidence" | "vpn_medium_confidence" | "vpn_high_confidence" | "tor" | "proxy" | "residential_proxy" | "residential_proxy_low_confidence" | "residential_proxy_medium_confidence" | "residential_proxy_high_confidence" | "ip_blocklist_email_spam" | "ip_blocklist_attack_source" | "ip_abuser" | "datacenter_ip" | "bogon_ip" | "anycast_ip" | "emulator" | "root_apps" | "app_cloner" | "play_device_integrity_failed" | "play_app_unrecognized" | "device_activity_high" | "device_activity_very_high" | "frida" | "mitm_attack" | "active_call" | "attestation_failed" | "attestation_missing" | "attestation_downgrade" | "probe_errors" | "custom_root_ca" | "secondary_user_profile" | "vpn_mobile" | "jailbreak" | "simulator" | "repeated_reinstall")[];
             /** @description Whether this scope has its own saved configuration */
             stored: boolean;
             /** Format: int64 */
@@ -1307,7 +1385,11 @@ export interface components {
         SDKEventOut: {
             agent?: string;
             agent_version?: string;
-            anonymity_network?: string;
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            anonymity_network?: "tor" | "relay" | "vpn" | "proxy" | "hosting";
             asn?: string;
             asn_name?: string;
             /**
@@ -1317,17 +1399,29 @@ export interface components {
             consumed_at?: string | null;
             country_code?: string;
             country_name?: string;
-            device_kind?: string;
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            device_kind?: "desktop" | "mobile" | "tablet" | "server";
             /** @description What Fingerly keeps of the submission, present when has_document is true: the schema, request id, time, SDK, IP network, the city-level IP answer, the risk score and triggers, attestation and the velocity decisions. Never the raw signals, the user agent or the address. Its contents are not a public contract. */
             document?: Record<string, never> | null;
-            environment: string;
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            environment: "production" | "staging" | "development";
             has_document: boolean;
             /** @description The network the request came from: an IPv4 /24 or an IPv6 /40, such as 203.0.113.0/24 */
             ip_network?: string;
             occurred_at: string;
             origin?: string;
             os?: string;
-            platform: string;
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            platform: "web" | "android" | "ios";
             /** @description The project the event belongs to */
             project_id?: string;
             /** @description Why enrichment did not happen, on an unavailable event */
@@ -1335,8 +1429,16 @@ export interface components {
             request_id: string;
             sdk_platform: string;
             sdk_version: string;
-            state: string;
-            suspect_level?: string;
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            state: "enriched" | "unavailable";
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            suspect_level?: "low" | "medium" | "high";
             /** Format: int32 */
             suspect_score?: number | null;
             tag?: string;
@@ -1344,7 +1446,11 @@ export interface components {
             url_host?: string;
             url_path?: string;
             visitor_id: string;
-            visitor_kind?: string;
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            visitor_kind?: "human" | "ai_bot" | "automation" | "search_crawler";
         };
         SDKEventsOut: {
             /** Format: int64 */
@@ -1367,7 +1473,11 @@ export interface components {
             /** Format: date-time */
             created_at: string;
             created_by?: string;
-            environment: string;
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            environment: "production" | "staging" | "development";
             /** Format: date-time */
             expires_at?: string | null;
             /** @description Whether suspect_score and suspect_level are withheld from a browser, an app, a proxy and a hosted domain */
@@ -1412,22 +1522,34 @@ export interface components {
             groups: components["schemas"]["SignalGroupOut"][];
             /** Format: int64 */
             max_weight: number;
-            platforms: string[];
+            /** @description New values can be added within API v1, so accept values not listed here. */
+            platforms: ("web" | "android" | "ios")[];
         };
         SignalGroupOut: {
             description: string;
-            inactive_on?: string[];
-            key: string;
+            /** @description New values can be added within API v1, so accept values not listed here. */
+            inactive_on?: ("web" | "android" | "ios")[];
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            key: "tor" | "ios_simulator" | "mitm_attack" | "frida_detected" | "virtual_machine" | "remote_control" | "datacenter_proxy" | "ip_blocklist" | "rooted_device" | "jailbroken_device" | "android_emulator" | "cloned_app" | "browser_tampering" | "fingerprint_suppressed" | "developer_tools" | "device_farm" | "bot" | "ip_reputation" | "residential_proxy" | "privacy_settings" | "embedded_web_view" | "high_activity" | "location_spoofing" | "vpn" | "incognito_mode" | "active_call" | "attestation_missing" | "attestation_failed" | "device_inconsistent" | "report_incomplete" | "custom_root_ca" | "secondary_user_profile" | "network_anomaly";
             label: string;
-            platforms: string[];
+            /** @description New values can be added within API v1, so accept values not listed here. */
+            platforms: ("web" | "android" | "ios")[];
             signals: components["schemas"]["SignalMemberOut"][];
             weights: {
                 [key: string]: number;
             };
         };
         SignalMemberOut: {
-            inactive_on?: string[];
-            signal: string;
+            /** @description New values can be added within API v1, so accept values not listed here. */
+            inactive_on?: ("web" | "android" | "ios")[];
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            signal: "incognito" | "tampering" | "antidetect_browser" | "automation" | "fetch_metadata_missing" | "web_ticket_missing" | "web_ticket_invalid" | "bad_bot" | "device_farm" | "high_activity" | "virtual_machine" | "fingerprint_suppressed" | "embedded_web_view" | "privacy_settings" | "remote_control" | "developer_tools" | "geo_mismatch" | "device_inconsistent" | "report_incomplete" | "vpn_public" | "vpn_timezone" | "vpn_os_mismatch" | "vpn_relay" | "vpn_low_confidence" | "vpn_medium_confidence" | "vpn_high_confidence" | "tor" | "proxy" | "residential_proxy" | "residential_proxy_low_confidence" | "residential_proxy_medium_confidence" | "residential_proxy_high_confidence" | "ip_blocklist_email_spam" | "ip_blocklist_attack_source" | "ip_abuser" | "datacenter_ip" | "bogon_ip" | "anycast_ip" | "emulator" | "root_apps" | "app_cloner" | "play_device_integrity_failed" | "play_app_unrecognized" | "device_activity_high" | "device_activity_very_high" | "frida" | "mitm_attack" | "active_call" | "attestation_failed" | "attestation_missing" | "attestation_downgrade" | "probe_errors" | "custom_root_ca" | "secondary_user_profile" | "vpn_mobile" | "jailbreak" | "simulator" | "repeated_reinstall";
             weights: {
                 [key: string]: number;
             };
@@ -1466,7 +1588,11 @@ export interface components {
             billed_micros: number;
             /** Format: int64 */
             checks: number;
-            environment: string;
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            environment: "production" | "staging" | "development";
             id: string;
             /** @description public or secret */
             kind?: string;
@@ -1546,9 +1672,17 @@ export interface components {
             duration_ms: number;
             endpoint_id: string;
             endpoint_url: string;
-            environment: string;
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            environment: "live" | "test";
             error?: string | null;
-            event: string;
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            event: "identification.completed" | "identification.refused" | "visitor.suspect" | "billing.status_changed" | "usage.daily_settled" | "webhook.test";
             event_id: string;
             id: string;
             /** Format: date-time */
@@ -1564,8 +1698,13 @@ export interface components {
             /** Format: int64 */
             delivered_24h: number;
             description: string;
-            environment: string;
-            events: string[];
+            /**
+             * @description New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            environment: "live" | "test";
+            /** @description New values can be added within API v1, so accept values not listed here. */
+            events: ("identification.completed" | "identification.refused" | "visitor.suspect" | "billing.status_changed" | "usage.daily_settled")[];
             /** Format: int64 */
             failed_24h: number;
             id: string;
@@ -1671,7 +1810,7 @@ export interface operations {
                 /** @description Exact visitor id */
                 visitor?: string;
                 /** @description low, medium or high */
-                level?: string;
+                level?: "low" | "medium" | "high";
             };
             header?: never;
             path?: never;
@@ -3212,7 +3351,7 @@ export interface operations {
                 /** @description The project the app belongs to */
                 project_id: string;
                 /** @description ios or android */
-                platform: string;
+                platform: "ios" | "android";
                 /** @description The install identifier the Fingerly SDK stored in the app */
                 install_id: string;
             };
@@ -3581,8 +3720,11 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description production, staging or development */
-                    environment?: string;
+                    /**
+                     * @description production, staging or development
+                     * @enum {string}
+                     */
+                    environment?: "production" | "staging" | "development";
                     /** @description cloudflare_worker, server_sdk or custom. Defaults to custom */
                     kind?: string;
                     name?: string;
@@ -3870,7 +4012,7 @@ export interface operations {
                 /** @description The organization whose weights these are */
                 organization_id: string;
                 /** @description web, android or ios */
-                platform: string;
+                platform: "web" | "android" | "ios";
             };
             cookie?: never;
         };
@@ -3972,7 +4114,7 @@ export interface operations {
                 /** @description The organization whose weights these are */
                 organization_id: string;
                 /** @description web, android or ios */
-                platform: string;
+                platform: "web" | "android" | "ios";
             };
             cookie?: never;
         };
@@ -4129,8 +4271,11 @@ export interface operations {
                     allowed_apple_app_ids?: string[];
                     /** @description Scheme and host, no path. A public key names at least one origin, Android package or Apple app ID */
                     allowed_origins?: string[];
-                    /** @description production, staging or development */
-                    environment?: string;
+                    /**
+                     * @description production, staging or development
+                     * @enum {string}
+                     */
+                    environment?: "production" | "staging" | "development";
                     /** Format: date-time */
                     expires_at?: string | null;
                     /** @description Withhold suspect_score and suspect_level from a browser, an app, a proxy and a hosted domain. Defaults to true for a public key and false for a secret key */
@@ -4645,7 +4790,7 @@ export interface operations {
                 /** @description The key whose weights these are */
                 sdk_key_id: string;
                 /** @description web, android or ios */
-                platform: string;
+                platform: "web" | "android" | "ios";
             };
             cookie?: never;
         };
@@ -4749,7 +4894,7 @@ export interface operations {
                 /** @description The key whose override is being removed */
                 sdk_key_id: string;
                 /** @description web, android or ios */
-                platform: string;
+                platform: "web" | "android" | "ios";
             };
             cookie?: never;
         };
@@ -5038,7 +5183,7 @@ export interface operations {
     listWebhookDeliveryAttempts: {
         parameters: {
             query?: {
-                environment?: string;
+                environment?: "all" | "live" | "test";
                 limit?: number;
                 cursor?: string;
             };
@@ -5186,8 +5331,9 @@ export interface operations {
             content: {
                 "application/json": {
                     description?: string;
-                    environment?: string;
-                    events?: string[];
+                    /** @enum {string} */
+                    environment?: "live" | "test";
+                    events?: ("identification.completed" | "identification.refused" | "visitor.suspect" | "billing.status_changed" | "usage.daily_settled")[];
                     url?: string;
                 };
             };
@@ -5329,8 +5475,9 @@ export interface operations {
             content: {
                 "application/json": {
                     description?: string | null;
-                    environment?: string | null;
-                    events?: string[] | null;
+                    /** @enum {string|null} */
+                    environment?: "live" | "test" | null;
+                    events?: ("identification.completed" | "identification.refused" | "visitor.suspect" | "billing.status_changed" | "usage.daily_settled")[] | null;
                     paused?: boolean | null;
                     url?: string | null;
                 };
