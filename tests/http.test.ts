@@ -779,6 +779,83 @@ describe("proxy boundary", () => {
     expect(supplement.status).toBe(404);
     expect(supplement.headers.get("cache-control")).toBe("no-store");
   });
+
+  it("forwards the Web Bot Auth headers unchanged and drops one over 4096 bytes", async () => {
+    const seen: Headers[] = [];
+    const fetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers));
+      return new Response('{"request_id":"r"}', {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "x-request-id": "req-1",
+          "fingerly-balance-micros": "999",
+        },
+      });
+    });
+    const proxy = createProxy({
+      proxyKey,
+      path: "/k7x2qm4a",
+      allowedOrigins: ["https://app.shop.test"],
+      clientIp: () => "203.0.113.42",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const signed = {
+      signature: "sig1=:dGVzdC1zaWduYXR1cmU=:",
+      "signature-input":
+        'sig1=("@authority" "signature-agent");created=1735689600;keyid="k1";alg="ed25519";tag="web-bot-auth"',
+      "signature-agent": '"https://chatgpt.com"',
+    };
+    const post = (extra: Record<string, string>) =>
+      proxy(
+        new Request("https://shop.test/k7x2qm4a", {
+          method: "POST",
+          headers: {
+            "x-api-key": "fly_pk_development_test",
+            origin: "https://app.shop.test",
+            host: "shop.test",
+            "x-custom-token": "app-header",
+            ...signed,
+            ...extra,
+          },
+          body: "{}",
+        }),
+      );
+
+    const res = await post({});
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-request-id")).toBe("req-1");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.headers.get("fingerly-balance-micros")).toBeNull();
+    const sent = seen[0]!;
+    expect(sent.get("signature")).toBe(signed.signature);
+    expect(sent.get("signature-input")).toBe(signed["signature-input"]);
+    expect(sent.get("signature-agent")).toBe(signed["signature-agent"]);
+    expect(sent.get("x-fingerly-host")).toBe("shop.test");
+    expect(sent.get("x-custom-token")).toBeNull();
+
+    const atCap = `"https://${"a".repeat(4096 - 10)}"`;
+    expect(atCap).toHaveLength(4096);
+    const capped = await post({
+      signature: `sig1=:${"A".repeat(4097)}:`,
+      "signature-agent": atCap,
+    });
+    expect(capped.status).toBe(200);
+    const cappedSent = seen[1]!;
+    expect(cappedSent.get("signature")).toBeNull();
+    expect(cappedSent.get("signature-input")).toBe(signed["signature-input"]);
+    expect(cappedSent.get("signature-agent")).toBe(atCap);
+
+    const preflight = await proxy(
+      new Request("https://shop.test/k7x2qm4a", {
+        method: "OPTIONS",
+        headers: { origin: "https://app.shop.test" },
+      }),
+    );
+    expect(preflight.headers.get("access-control-allow-headers")).toBe(
+      "content-type, x-api-key, idempotency-key, x-fingerly-sdk-platform",
+    );
+  });
 });
 
 describe("webhook malformed input", () => {

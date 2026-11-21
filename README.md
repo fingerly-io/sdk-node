@@ -255,8 +255,9 @@ Client SDKs send a single `POST` identification envelope to that path, and the p
    `X-Fingerly-Origin` from `Host`, `Referer` or the request URL.
 4. Forwards `X-Api-Key`, `Content-Type`, `User-Agent`, `Idempotency-Key`,
    `Sec-Fetch-*` (`Sec-Fetch-Site`, `Sec-Fetch-Mode`, `Sec-Fetch-Dest`),
-   `Sec-CH-UA-*` (`Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`) and
-   `X-Fingerly-Host`.
+   `Sec-CH-UA-*` (`Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`), the
+   Web Bot Auth `Signature`, `Signature-Input` and `Signature-Agent` (each
+   dropped when over 4096 bytes) and `X-Fingerly-Host`.
 
 The upstream is checked when the proxy is created and answers are checked before they are relayed:
 

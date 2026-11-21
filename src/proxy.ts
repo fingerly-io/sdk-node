@@ -60,6 +60,14 @@ const CLIENT_METADATA_HEADERS = [
   "sec-ch-ua-platform",
 ];
 
+/**
+ * Web Bot Auth headers an AI agent's browser signs the request with,
+ * forwarded when present and at most 4096 bytes. The API ignores a longer
+ * one, so it is dropped here rather than refused.
+ */
+const SIGNATURE_HEADERS = ["signature", "signature-input", "signature-agent"];
+const MAX_SIGNATURE_HEADER_BYTES = 4096;
+
 const CORS_ALLOW_HEADERS =
   "content-type, x-api-key, idempotency-key, x-fingerly-sdk-platform";
 const CORS_EXPOSE_HEADERS =
@@ -464,6 +472,12 @@ export class FingerlyProxy {
     for (const name of CLIENT_METADATA_HEADERS) {
       const value = request.headers.get(name);
       if (value) headers.set(name, value);
+    }
+    for (const name of SIGNATURE_HEADERS) {
+      const value = request.headers.get(name);
+      // Header values are byte strings: one character per byte.
+      if (value && value.length <= MAX_SIGNATURE_HEADER_BYTES)
+        headers.set(name, value);
     }
     return headers;
   }
