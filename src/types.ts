@@ -167,6 +167,101 @@ export type Event = Omit<
   document?: EventDocument | null;
 };
 
+/**
+ * One request your server served, as raw input for
+ * `fingerly.agents.sightings`. Never the path, query, cookies or body.
+ */
+export interface AgentSighting {
+  /** The `User-Agent` header as received, or `""`; at most 4096 bytes. */
+  user_agent: string;
+  /** One IPv4 or IPv6 literal from a source your app trusts. */
+  client_ip: string;
+  /** The `Host` the request was sent to. */
+  host?: string;
+  /** The request method as received; GET when absent. */
+  method?: string;
+  /** The Web Bot Auth `Signature` header; at most 4096 bytes. */
+  signature?: string;
+  /** The Web Bot Auth `Signature-Input` header; at most 4096 bytes. */
+  signature_input?: string;
+  /** The Web Bot Auth `Signature-Agent` header; at most 4096 bytes. */
+  signature_agent?: string;
+  /** Times this exact request was served since it was last reported; 1 when absent. */
+  count?: number;
+}
+
+/**
+ * What the API says sent one reported request. `ai` is present only when
+ * `visitor_kind` is `ai_bot`.
+ */
+export interface AgentAnswer {
+  /**
+   * Seconds this answer may be reused for the same user agent, address and
+   * `Signature-Agent`; 0 for a signed request, which is checked every time.
+   */
+  ttl: number;
+  visitor_kind: VisitorKind | (string & {});
+  /** The agent's name, such as `GPTBot`; absent for a person's browser. */
+  agent?: string;
+  ai?: AIAgent;
+}
+
+/** The answer to `fingerly.agents.sightings`, one item per reported request. */
+export interface AgentSightingsResponse {
+  /** Names the server's rules; remembered answers are dropped when it changes. */
+  rules_version: string;
+  items: AgentAnswer[];
+}
+
+/** Options for the agent sightings reporter. */
+export interface AgentSightingsOptions {
+  /**
+   * Server-only key: `fly_sk_{environment}_…`. Checked on the first report,
+   * so it may be unset while a build loads the module.
+   */
+  secretKey: string | undefined;
+  /**
+   * Returns the visitor's address: exactly one IPv4 or IPv6 literal, from
+   * infrastructure your app trusts, as for the proxy. `lookup` needs it to
+   * answer synchronously; a promise makes `lookup` answer unknown. A request
+   * whose address cannot be resolved is not reported.
+   */
+  clientIp(request: Request, peer: ProxyPeer): string | Promise<string>;
+  /** API route version. Defaults to v1. */
+  apiVersion?: string;
+  /** Overrides the Fingerly API origin, as for the client. */
+  endpoint?: string;
+  /** Accepts a plain `http://` loopback endpoint, for a local API. */
+  allowInsecureLoopback?: boolean;
+  /** Replacement `fetch`, for tests or a host with its own HTTP stack. */
+  fetchImpl?: typeof fetch;
+  /**
+   * Answers remembered, at most. Defaults to 4096 (about 1.5 MB); values
+   * above 65536 are treated as 65536.
+   */
+  cacheSize?: number;
+  /**
+   * Response media types reported. Defaults to `text/html` and
+   * `application/xhtml+xml`; a list replaces them.
+   */
+  contentTypes?: readonly string[];
+  /** Path prefixes reported whatever the response's content type. */
+  includePaths?: readonly string[];
+  /**
+   * Path prefixes never reported, including `/robots.txt`, `/llms.txt` and
+   * `/llms-full.txt`, which are otherwise always reported.
+   */
+  excludePaths?: readonly string[];
+  /**
+   * Receives one concise line per problem, for your own logger, at most once
+   * a minute each. Without it problems go to `console.error`. Lines never
+   * carry a reported field.
+   */
+  onError?: ((failure: ProxyFailure) => void) | undefined;
+  /** Monotonic clock in milliseconds; override only in tests. */
+  now?: () => number;
+}
+
 /** One page of events, newest first. */
 export type EventPage = Omit<components["schemas"]["SDKEventsOut"], "rows"> & {
   rows: Event[];

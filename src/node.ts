@@ -209,7 +209,7 @@ function drained(req: IncomingMessage): Promise<boolean> {
 }
 
 /** Copies Node's header object into Fetch headers. */
-function toHeaders(raw: IncomingMessage["headers"]): Headers {
+export function toHeaders(raw: IncomingMessage["headers"]): Headers {
   const headers = new Headers();
   for (const [name, value] of Object.entries(raw)) {
     if (value === undefined) continue;

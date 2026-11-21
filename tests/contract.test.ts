@@ -11,6 +11,7 @@ import {
   load,
   verifyWebhook,
   type AIAgent,
+  type AgentSightingsResponse,
   type Attestation,
   type Event,
   type EventDocument,
@@ -49,6 +50,11 @@ describe("server-owned contract fixtures", () => {
       else if (fixture.schema === "SDKEventsOut") {
         const page: EventPage = await client.events.list();
         expect(page).toEqual(fixture.body);
+      } else if (fixture.schema === "AgentSightingsOut") {
+        const answer: AgentSightingsResponse = await client.agents.sightings([
+          { user_agent: "", client_ip: "198.51.100.1" },
+        ]);
+        expect(answer).toEqual(fixture.body);
       } else {
         const event: Event = await client.events.get("id");
         expect(event).toEqual(fixture.body);

@@ -21,7 +21,7 @@
 
 ## What is this
 
-`@fingerly/node` is the server-side Node.js package for [Fingerly](https://fingerly.io), which identifies the device behind every web and app session and scores how suspicious it is. Use it to protect signups, logins and payments: read and verify the event a client SDK produced with a server-only secret key, spend iOS DeviceCheck bits, verify webhook signatures, and relay browser and native client SDK traffic from a path on your own site with a first-party proxy.
+`@fingerly/node` is the server-side Node.js package for [Fingerly](https://fingerly.io), which identifies the device behind every web and app session and scores how suspicious it is. Use it to protect signups, logins and payments: read and verify the event a client SDK produced with a server-only secret key, spend iOS DeviceCheck bits, verify webhook signatures, report the pages your server served so AI crawlers that never run JavaScript are seen, and relay browser and native client SDK traffic from a path on your own site with a first-party proxy.
 
 Node.js 18.16 or newer. No runtime dependencies.
 
@@ -68,6 +68,7 @@ Full documentation: [docs.fingerly.io/docs/sdks/node](https://docs.fingerly.io/d
 | Run a once-per-device check on iOS | [DeviceCheck bits on iOS](#devicecheck-bits-on-ios) |
 | Check a webhook signature | [Verify webhooks](#verify-webhooks) |
 | Keep identification working behind content blockers | [First-party proxy](#first-party-proxy) |
+| See AI crawlers that never run JavaScript | [Agent sightings](#agent-sightings) |
 | Mount the proxy in Next.js, Express, NestJS, Fastify, Koa or Hono | [Frameworks](#frameworks) |
 
 ## Contents
@@ -77,6 +78,7 @@ Full documentation: [docs.fingerly.io/docs/sdks/node](https://docs.fingerly.io/d
 - [DeviceCheck bits on iOS](#devicecheck-bits-on-ios)
 - [Verify webhooks](#verify-webhooks)
 - [First-party proxy](#first-party-proxy)
+- [Agent sightings](#agent-sightings)
 - [Frameworks](#frameworks)
 - [Development](#development)
 - [Requirements](#requirements)
@@ -130,7 +132,7 @@ if (signals.includes(Signal.FingerprintSuppressed)) {
 
 | Error | When | Carries |
 | --- | --- | --- |
-| `FingerlyAPIError` | any non-2xx answer, redirects included, or a 2xx that is not JSON or exceeds 4 MiB (`code` `invalid_response` or `response_too_large`) | `status`, `code`, `details`, `requestId`, `retryAfter` (seconds, or `null`) |
+| `FingerlyAPIError` | any non-2xx answer, redirects included, or a 2xx that is not JSON or exceeds 4 MiB (`code` `invalid_response` or `response_too_large`) | `status`, `code`, `details`, `requestId`, `retryAfter` (seconds, or `null`), `rateLimitScope` (which limit refused a `429`, such as `daily`, or `null`) |
 | `FingerlyTimeoutError` | the deadline passed | |
 | `FingerlyConnectionError` | the API could not be reached or the connection dropped mid-response; `FingerlyTimeoutError` is a kind of it | `cause` |
 
@@ -307,6 +309,76 @@ The proxy reports itself upstream as `node/0.4.1`, which the dashboard shows per
 ### The visitor's address
 
 `clientIp(request, peer)` must return exactly one IPv4 or IPv6 address. Take it from the header your CDN or load balancer sets, and otherwise from `peer.remoteAddress`, the TCP peer, where the server exposes it (the Node handler below does; a Fetch route handler cannot). Trust that header only when traffic can reach your app solely through that CDN or load balancer, since anyone else can send it. `null`, an empty string, a comma-separated list or anything else is a configuration error: the request is answered 500 without calling upstream.
+
+## Agent sightings
+
+Most AI crawlers and fetchers (GPTBot, ClaudeBot and the like) read your pages without running their JavaScript, so the browser SDK never sees them. The agent sightings reporter sees them from your server instead: after each page your server serves, it reports the request to Fingerly as raw input, and Fingerly answers what sent it. The answers appear in the dashboard's AI traffic view and, through `lookup`, in your own code. The reporter decides nothing about a visitor itself: it holds no list of agents or addresses and never filters by user agent.
+
+```ts
+import { AIVerificationResult, AgentSightings, Fingerly } from "@fingerly/node";
+import express from "express";
+
+const sightings = Fingerly.createAgentSightings({
+  secretKey: process.env.FINGERLY_SECRET_KEY,
+  // The same callback contract as the proxy: see "The visitor's address".
+  clientIp: (request, peer) =>
+    request.headers.get("x-real-ip") ?? peer.remoteAddress ?? "",
+});
+
+const app = express();
+app.use(sightings.handleNode); // before your routes
+
+app.get("/pricing", (req, res) => {
+  const answer = sightings.lookupNode(req);
+  if (answer === AgentSightings.Unknown) {
+    // Nothing known yet: serve as usual.
+  } else if (answer.ai?.verification.result === AIVerificationResult.Fail) {
+    // The request claims to be an AI agent its operator does not stand behind.
+  }
+  res.send(renderPricing());
+});
+```
+
+`handleNode` is `(req, res, next?)` middleware for Express, NestJS and `node:http` (call it at the start of a plain `node:http` handler without `next`). It calls `next` at once and reports the request when its response has finished, so it never delays a response. On a Fetch runtime, call `sightings.report(request, response, peer?)` once you have the response, and `sightings.lookup(request, peer?)` in place of `lookupNode`.
+
+**What is reported.** Every response with a `Content-Type` of `text/html` or `application/xhtml+xml`, and every request for `/robots.txt`, `/llms.txt` or `/llms-full.txt`, whatever the status. `includePaths` adds path prefixes reported whatever their content type, `excludePaths` removes path prefixes (the three files included), and `contentTypes` replaces the media types. Static assets, API routes and health checks are not reported unless you include them.
+
+**What is sent.** The `User-Agent` (a request whose user agent is over 4096 bytes is not reported), the address `clientIp` returned (a request without one is not reported), `Host`, the method, the Web Bot Auth `Signature`, `Signature-Input` and `Signature-Agent` headers when present (each left out when over 4096 bytes), and how many times the same request was seen. Never the path, the query string, cookies, `Authorization`, any other header, the body or the response. None of these fields is ever logged.
+
+**How `lookup` answers.** From memory only: it never waits on the network and never throws. It returns the answer Fingerly gave for the same user agent, address and `Signature-Agent` (`visitor_kind`, `agent`, and `ai` for an AI agent, as on events), or `AgentSightings.Unknown` when there is none yet or it expired. Treat `Unknown` as "serve as usual". A signed request is checked every time, so it is never remembered and always `Unknown` to `lookup`. `lookup` needs `clientIp` to return the address directly; when it returns a promise, `lookup` answers `Unknown` (reports still wait for it).
+
+**Memory.** Answers live in a least-recently-used cache of 4096 entries by default (about 1.5 MB), set with `cacheSize`, never more than 65536 (about 25 MB). Each answer is kept for the time Fingerly said, and all of them are dropped when Fingerly's rules change. At most 1000 requests wait to be reported; past that, new requests are not reported and `sightings.dropped` counts them, while requests already waiting keep counting.
+
+**Reporting.** Repeats of a request are folded into one item with a count, cache hits included, except signed requests, which are each their own item. A background timer, which never keeps the process alive, sends up to 200 requests at a time once 200 are waiting, once they reach 64 KiB, or 2 seconds after the oldest, one report at a time, each with a 5 second deadline. Everything fails open: requests keep being served and `lookup` keeps answering whatever the API does.
+
+| API answer | What the reporter does |
+| --- | --- |
+| `200` | Remembers each answer for its `ttl`. |
+| `429` | Keeps the requests and waits for `Retry-After` (`daily` scope: until the next UTC day) before reporting again. |
+| `503`, or the API could not be reached | Keeps the requests and retries after 1 second, doubling up to 60 seconds. |
+| `401` / `403` | Drops the requests, pauses for 60 seconds and logs: the key is wrong or revoked. |
+| `422`, or any other status | Drops the requests and logs. |
+| No answer within the deadline | Drops the requests: Fingerly may have counted them already. |
+
+Problems go to `console.error`, at most once a minute each, or to `onError` with a `ProxyFailureKind`, and never carry a reported field. `sightings.flush()` sends everything waiting now and `sightings.close()` stops the timer and sends what is left; neither rejects. On serverless and edge runtimes, where nothing runs after the invocation ends, call `flush()` before it does, for example `waitUntil(sightings.flush())`.
+
+`fingerly.agents.sightings(items)` is the call underneath: one `POST /api/v1/agents/sightings` with up to 200 items, answered in the same order. It throws `FingerlyAPIError` like the event reads; a `429` carries `retryAfter` and `rateLimitScope`.
+
+<details>
+<summary>Agent sightings options</summary>
+
+| Option | Meaning |
+| --- | --- |
+| `secretKey` | The secret key. Checked on the first report, so it may be unset while a build loads the module. |
+| `clientIp(request, peer)` | Returns the visitor's address. See [The visitor's address](#the-visitors-address). |
+| `cacheSize` | Answers remembered. 4096 by default, at most 65536. |
+| `contentTypes` | Response media types reported. `text/html` and `application/xhtml+xml` by default. |
+| `includePaths` | Path prefixes reported whatever their content type. |
+| `excludePaths` | Path prefixes never reported. |
+| `onError` | Receives one concise line per problem, for your own logger. |
+| `endpoint`, `apiVersion`, `allowInsecureLoopback`, `fetchImpl` | As for the client. |
+
+</details>
 
 ## Frameworks
 

@@ -38,6 +38,16 @@ function pause(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/** Per-call options for {@link APITransport.postJSON}. */
+export interface SendOptions {
+  /** Caller cancellation; its reason is preserved. */
+  signal?: AbortSignal | undefined;
+  /** Deadline for this call, replacing the client's. */
+  timeoutMs?: number;
+  /** Set to true once the answer's status line arrived. */
+  progress?: { responded: boolean };
+}
+
 /** Shape of the API's error envelope; every field is treated as untrusted. */
 interface ErrorBody {
   error?: { code?: unknown; details?: unknown; consumed_at?: unknown };
@@ -169,11 +179,36 @@ export class APITransport {
     }
   }
 
+  /**
+   * Sends one POST with a JSON body and parses its JSON answer. One attempt,
+   * never retried.
+   *
+   * @param path Path below the versioned base URL, already encoded.
+   * @param body JSON value to send.
+   * @param options Caller cancellation, a deadline replacing the client's,
+   *   and a progress record whose `responded` turns true once the answer's
+   *   status arrived, so a caller can tell a request that never reached the
+   *   API from one whose answer was lost.
+   */
+  postJSON<T>(
+    path: string,
+    body: unknown,
+    options: SendOptions = {},
+  ): Promise<T> {
+    return this.send<T>("POST", path, JSON.stringify(body), options.signal, {
+      ...(options.timeoutMs !== undefined
+        ? { timeoutMs: options.timeoutMs }
+        : {}),
+      ...(options.progress !== undefined ? { progress: options.progress } : {}),
+    });
+  }
+
   private send<T>(
     method: string,
     path: string,
     payload: string | undefined,
     signal?: AbortSignal,
+    extra: Omit<SendOptions, "signal"> = {},
   ): Promise<T> {
     // Validated on use rather than at construction, so a build without
     // secrets can load the module that creates the client. A public, proxy or
@@ -183,48 +218,54 @@ export class APITransport {
     } catch (error) {
       return Promise.reject(error);
     }
-    return withDeadline(this.timeoutMs, signal, async (bounded) => {
-      let response: Response;
-      let bytes: Buffer | null;
-      try {
-        const headers: Record<string, string> = {
-          "x-api-key": this.#secretKey!,
-          accept: "application/json",
-        };
-        if (payload !== undefined) headers["content-type"] = "application/json";
-        // Read at call time: a client made at module scope predates a
-        // framework's fetch patch, and the framework must see `no-store` to
-        // treat this read as dynamic.
-        response = await (this.fetchImpl ?? fetch)(this.baseUrl + path, {
-          method,
-          headers,
-          ...(payload !== undefined ? { body: payload } : {}),
-          redirect: "manual",
-          // Frameworks that patch fetch (Next.js) otherwise serve a read from
-          // their cache, or freeze it into a build, as a stale event.
-          cache: "no-store",
-          signal: bounded,
-        });
-        bytes = await readLimited(response.body, MAX_RESPONSE_BYTES, bounded);
-      } catch (error) {
-        // The deadline and the caller's cancellation win the race in
-        // withDeadline; anything else is the network or a cut-off body.
-        if (bounded.aborted) throw bounded.reason;
-        // Next.js throws from a `no-store` fetch during static generation to
-        // make the page dynamic; wrapped, that signal fails the build instead.
-        if ((error as { digest?: unknown } | null)?.digest !== undefined)
-          throw error;
-        throw new FingerlyConnectionError(error);
-      }
-      if (!response.ok) throw this.toApiError(response, bytes);
-      if (bytes === null)
-        throw this.invalidResponse(response, "response_too_large");
-      try {
-        return JSON.parse(bytes.toString("utf8")) as T;
-      } catch {
-        throw this.invalidResponse(response, "invalid_response");
-      }
-    });
+    return withDeadline(
+      extra.timeoutMs ?? this.timeoutMs,
+      signal,
+      async (bounded) => {
+        let response: Response;
+        let bytes: Buffer | null;
+        try {
+          const headers: Record<string, string> = {
+            "x-api-key": this.#secretKey!,
+            accept: "application/json",
+          };
+          if (payload !== undefined)
+            headers["content-type"] = "application/json";
+          // Read at call time: a client made at module scope predates a
+          // framework's fetch patch, and the framework must see `no-store` to
+          // treat this read as dynamic.
+          response = await (this.fetchImpl ?? fetch)(this.baseUrl + path, {
+            method,
+            headers,
+            ...(payload !== undefined ? { body: payload } : {}),
+            redirect: "manual",
+            // Frameworks that patch fetch (Next.js) otherwise serve a read from
+            // their cache, or freeze it into a build, as a stale event.
+            cache: "no-store",
+            signal: bounded,
+          });
+          if (extra.progress) extra.progress.responded = true;
+          bytes = await readLimited(response.body, MAX_RESPONSE_BYTES, bounded);
+        } catch (error) {
+          // The deadline and the caller's cancellation win the race in
+          // withDeadline; anything else is the network or a cut-off body.
+          if (bounded.aborted) throw bounded.reason;
+          // Next.js throws from a `no-store` fetch during static generation to
+          // make the page dynamic; wrapped, that signal fails the build instead.
+          if ((error as { digest?: unknown } | null)?.digest !== undefined)
+            throw error;
+          throw new FingerlyConnectionError(error);
+        }
+        if (!response.ok) throw this.toApiError(response, bytes);
+        if (bytes === null)
+          throw this.invalidResponse(response, "response_too_large");
+        try {
+          return JSON.parse(bytes.toString("utf8")) as T;
+        } catch {
+          throw this.invalidResponse(response, "invalid_response");
+        }
+      },
+    );
   }
 
   /**
@@ -295,6 +336,8 @@ export class APITransport {
     if (metadata.requestId === undefined && requestId)
       metadata.requestId = this.redact(requestId);
     metadata.retryAfter = parseRetryAfter(response.headers.get("retry-after"));
+    const scope = response.headers.get("fingerly-ratelimit-scope");
+    if (scope && /^[a-z_]{1,32}$/.test(scope)) metadata.rateLimitScope = scope;
     return metadata;
   }
 
