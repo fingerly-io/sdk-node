@@ -112,8 +112,17 @@ export interface AIVerification {
 
 /**
  * The AI agent behind an `ai_bot` event: who operates it, what its traffic is
- * for and how far its claim was checked. The identity comes from the user
- * agent, which any client can copy, and is not verified yet.
+ * for and how far its claim was checked.
+ *
+ * The agent is named by a Web Bot Auth signature when the request carried
+ * one, otherwise by its user agent. `verification` says how far that was
+ * checked: `AIVerificationMethod.Signature` (the operator's published key
+ * signed the request) or `AIVerificationMethod.IpList` (the address is inside
+ * the operator's published ranges), with result `AIVerificationResult.Pass`,
+ * `AIVerificationResult.Fail` (the name was borrowed), or
+ * `AIVerificationResult.NotAttempted` with method `AIVerificationMethod.None`
+ * (the operator publishes nothing to check against, or it could not be
+ * checked; the name is then only the client's claim).
  */
 export interface AIAgent {
   /** The agent as its operator names it, such as `ChatGPT-User`. */
