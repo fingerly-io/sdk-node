@@ -99,7 +99,19 @@ A 404 from `get` carries one of two codes:
 
 The archived `document` (`EventDocument | null`, including platform-neutral `attestation: Attestation` and `risk.triggers`) arrives moments after the event: check `has_document` rather than assuming. `EventTrigger.signal` is typed as `SignalName`, including the `v: 3` anti-spoofing and integrity signals `"attestation_failed"`, `"attestation_downgrade"`, `"device_inconsistent"`, `"report_incomplete"`, `"probe_errors"`, `"fetch_metadata_missing"`, `"web_ticket_missing"`, `"web_ticket_invalid"`, `"tampering"`, `"custom_root_ca"` and `"secondary_user_profile"`. Event `triggers` carry signal groups, such as `vpn`; `document.risk.triggers` carry the raw signals behind them, such as `vpn_public`. A native `attestation` also carries `attest_skipped` (the app's reason for sending no proof) and `downgrade` (the report named an install an attested device owns).
 
-Every closed set of values has a runtime constant with a same-named type: `Signal`, `SuspectLevel`, `Confidence`, `EventState`, `Platform`, `Environment`, `AnonymityNetwork`, `DeviceKind`, `VisitorKind`, `AttestationState`, `AttestationStatus`, `AttestSkippedReason`, `VerifyReason`, `DeviceCheckErrorCode`, `WebhookEventType` and `ProxyFailureKind`. A member is its value in PascalCase, word by word (`Signal.FingerprintSuppressed` is `"fingerprint_suppressed"`). Fields the server fills are typed open, such as `SuspectLevel | (string & {})`, so comparing with the constant or with the string both compile, and a value a newer server adds still reaches your code.
+`event.visitor_kind` says what sort of client made the request (`VisitorKind`). When it is `VisitorKind.AiBot`, `event.ai` (`AIAgent`) names the agent: `name` and `provider` (open strings, such as `ChatGPT-User` and `OpenAI`), `purpose` (`AIPurpose`), `runtime` (`AIRuntime`), `declared`, and `verification` with `method` (`AIVerificationMethod`) and `result` (`AIVerificationResult`). On every other event `ai` is absent. The identity comes from the user agent, which any client can copy, and is not verified yet: `verification` is `none` / `not_attempted`. Only clients that run the browser SDK produce events, so a crawler that does not run JavaScript never appears. `list` narrows by `kind`, `aiProvider` (exact and case sensitive, as events name it) and `aiPurpose`, next to `visitor` and `level`:
+
+```ts
+import { AIPurpose, VisitorKind } from "@fingerly/node";
+
+const page = await fingerly.events.list({
+  kind: VisitorKind.AiBot,
+  aiPurpose: AIPurpose.UserFetch,
+});
+for (const event of page.rows) console.log(event.ai?.provider, event.ai?.name);
+```
+
+Every closed set of values has a runtime constant with a same-named type: `Signal`, `SuspectLevel`, `Confidence`, `EventState`, `Platform`, `Environment`, `AnonymityNetwork`, `DeviceKind`, `VisitorKind`, `AIPurpose`, `AIRuntime`, `AIVerificationMethod`, `AIVerificationResult`, `AttestationState`, `AttestationStatus`, `AttestSkippedReason`, `VerifyReason`, `DeviceCheckErrorCode`, `WebhookEventType` and `ProxyFailureKind`. A member is its value in PascalCase, word by word (`Signal.FingerprintSuppressed` is `"fingerprint_suppressed"`). Fields the server fills are typed open, such as `SuspectLevel | (string & {})`, so comparing with the constant or with the string both compile, and a value a newer server adds still reaches your code.
 
 ```ts
 import { Signal, SuspectLevel } from "@fingerly/node";
