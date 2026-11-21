@@ -1,7 +1,13 @@
 import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { createProxy, load, verifyWebhook } from "../src/index.js";
+import {
+  AIPurpose,
+  VisitorKind,
+  createProxy,
+  load,
+  verifyWebhook,
+} from "../src/index.js";
 
 describe("verifyWebhook", () => {
   it("verifies the raw payload and rejects stale timestamps", () => {
@@ -215,6 +221,14 @@ describe("event client", () => {
       url: "https://fingerly.test/api/v1/events?limit=20&level=high",
       key: "fly_sk_development_test",
     });
+    await client.events.list({
+      kind: VisitorKind.AiBot,
+      aiProvider: "OpenAI",
+      aiPurpose: AIPurpose.UserFetch,
+    });
+    expect(seen?.url).toBe(
+      "https://fingerly.test/api/v1/events?kind=ai_bot&ai_provider=OpenAI&ai_purpose=user_fetch",
+    );
   });
 });
 

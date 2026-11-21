@@ -1,6 +1,10 @@
 import type { components } from "./generated/contract.js";
 
 import type {
+  AIPurpose,
+  AIRuntime,
+  AIVerificationMethod,
+  AIVerificationResult,
   AnonymityNetwork,
   AttestSkippedReason,
   AttestationState,
@@ -100,6 +104,29 @@ export type EventTrigger = Omit<
   confidence?: Confidence | (string & {});
 };
 
+/** How an AI agent's claimed identity was checked, and what that found. */
+export interface AIVerification {
+  method: AIVerificationMethod | (string & {});
+  result: AIVerificationResult | (string & {});
+}
+
+/**
+ * The AI agent behind an `ai_bot` event: who operates it, what its traffic is
+ * for and how far its claim was checked. The identity comes from the user
+ * agent, which any client can copy, and is not verified yet.
+ */
+export interface AIAgent {
+  /** The agent as its operator names it, such as `ChatGPT-User`. */
+  name: string;
+  /** The company that operates it, such as `OpenAI`. An open string. */
+  provider: string;
+  purpose: AIPurpose | (string & {});
+  runtime: AIRuntime | (string & {});
+  /** True when the agent named itself, in its user agent or a signature. */
+  declared: boolean;
+  verification: AIVerification;
+}
+
 /**
  * A stored identification event.
  *
@@ -111,7 +138,7 @@ export type EventTrigger = Omit<
  * location or IP error, risk, attestation and velocity flags) carrying no raw
  * signals, no user agent and no IP address. `ip_network` is the IPv4 /24 or
  * IPv6 /40 the request came from, such as `203.0.113.0/24`; the API never
- * returns the address.
+ * returns the address. `ai` is present only when `visitor_kind` is `ai_bot`.
  */
 export type Event = Omit<
   components["schemas"]["SDKEventOut"],
@@ -125,6 +152,7 @@ export type Event = Omit<
   | "anonymity_network"
   | "device_kind"
   | "visitor_kind"
+  | "ai"
 > & {
   suspect_score: number | null;
   suspect_level?: SuspectLevel | (string & {});
@@ -134,6 +162,7 @@ export type Event = Omit<
   anonymity_network?: AnonymityNetwork | (string & {});
   device_kind?: DeviceKind | (string & {});
   visitor_kind?: VisitorKind | (string & {});
+  ai?: AIAgent;
   triggers: EventTrigger[];
   document?: EventDocument | null;
 };
@@ -157,6 +186,15 @@ export interface EventListOptions {
   visitor?: string;
   /** Restrict to one suspect level. */
   level?: SuspectLevel;
+  /** Restrict to one visitor kind, such as `VisitorKind.AiBot`. */
+  kind?: VisitorKind;
+  /**
+   * Restrict to one AI agent operator, exactly as events name it (case
+   * sensitive), such as `OpenAI`.
+   */
+  aiProvider?: string;
+  /** Restrict to one AI agent purpose, such as `AIPurpose.UserFetch`. */
+  aiPurpose?: AIPurpose;
   /** Caller cancellation. */
   signal?: AbortSignal;
 }

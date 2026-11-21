@@ -1,5 +1,9 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
+  AIPurpose,
+  AIRuntime,
+  AIVerificationMethod,
+  AIVerificationResult,
   AnonymityNetwork,
   AttestSkippedReason,
   AttestationState,
@@ -16,6 +20,7 @@ import {
   VerifyReason,
   VisitorKind,
   WebhookEventType,
+  type AIAgent,
   type Attestation,
   type Event,
   type EventDocument,
@@ -134,6 +139,10 @@ const memberName = (value: string) =>
 const sorted = (values: Iterable<string>) => [...new Set(values)].sort();
 
 const constants: Record<string, Record<string, string>> = {
+  AIPurpose,
+  AIRuntime,
+  AIVerificationMethod,
+  AIVerificationResult,
   AnonymityNetwork,
   AttestSkippedReason,
   AttestationState,
@@ -229,6 +238,28 @@ describe("enum constants", () => {
       "automation",
       "search_crawler",
     ]);
+    expect(Object.values(AIPurpose)).toEqual([
+      "training",
+      "search",
+      "user_fetch",
+      "agent",
+    ]);
+    expect(Object.values(AIRuntime)).toEqual([
+      "provider_cloud",
+      "hosted_browser",
+      "user_device",
+    ]);
+    expect(Object.values(AIVerificationMethod)).toEqual([
+      "signature",
+      "ip_list",
+      "reverse_dns",
+      "none",
+    ]);
+    expect(Object.values(AIVerificationResult)).toEqual([
+      "pass",
+      "fail",
+      "not_attempted",
+    ]);
   });
 
   it("matches the SDK's own closed sets", () => {
@@ -285,6 +316,12 @@ describe("enum types", () => {
     expectTypeOf<EventListOptions["level"]>().toEqualTypeOf<
       SuspectLevel | undefined
     >();
+    expectTypeOf<EventListOptions["kind"]>().toEqualTypeOf<
+      VisitorKind | undefined
+    >();
+    expectTypeOf<EventListOptions["aiPurpose"]>().toEqualTypeOf<
+      AIPurpose | undefined
+    >();
   });
 
   it("types server values open, accepting constants, literals and new values", () => {
@@ -304,6 +341,19 @@ describe("enum types", () => {
     >();
     expectTypeOf<Event["visitor_kind"]>().toEqualTypeOf<
       VisitorKind | (string & {}) | undefined
+    >();
+    expectTypeOf<Event["ai"]>().toEqualTypeOf<AIAgent | undefined>();
+    expectTypeOf<AIAgent["purpose"]>().toEqualTypeOf<
+      AIPurpose | (string & {})
+    >();
+    expectTypeOf<AIAgent["runtime"]>().toEqualTypeOf<
+      AIRuntime | (string & {})
+    >();
+    expectTypeOf<AIAgent["verification"]["method"]>().toEqualTypeOf<
+      AIVerificationMethod | (string & {})
+    >();
+    expectTypeOf<AIAgent["verification"]["result"]>().toEqualTypeOf<
+      AIVerificationResult | (string & {})
     >();
     expectTypeOf<EventTrigger["signal"]>().toEqualTypeOf<SignalName>();
     expectTypeOf<EventTrigger["confidence"]>().toEqualTypeOf<

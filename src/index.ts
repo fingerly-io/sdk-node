@@ -18,6 +18,10 @@ export {
 } from "./errors.js";
 export type { APIErrorMetadata } from "./errors.js";
 export {
+  AIPurpose,
+  AIRuntime,
+  AIVerificationMethod,
+  AIVerificationResult,
   AnonymityNetwork,
   AttestSkippedReason,
   AttestationState,
@@ -36,6 +40,8 @@ export {
   WebhookEventType,
 } from "./enums.js";
 export type {
+  AIAgent,
+  AIVerification,
   Attestation,
   DeviceCheckBits,
   DeviceCheckWrite,

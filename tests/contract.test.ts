@@ -3,8 +3,14 @@ import { describe, expect, it } from "vitest";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import {
+  AIPurpose,
+  AIRuntime,
+  AIVerificationMethod,
+  AIVerificationResult,
+  VisitorKind,
   load,
   verifyWebhook,
+  type AIAgent,
   type Attestation,
   type Event,
   type EventDocument,
@@ -158,6 +164,70 @@ describe("server-owned contract fixtures", () => {
     expect(decoded.visitor_id).toBe("");
     expect(decoded.triggers.map((t) => t.signal)).toEqual(v3Groups);
     expect(decoded.document?.attestation?.status).toBe("verified");
+  });
+
+  it("decodes the AI agent on an ai_bot event", async () => {
+    const fixture = fixtures.responses.find(
+      (f: { name: string }) => f.name === "ai_agent",
+    );
+    const client = load({
+      secretKey: "fly_sk_development_contract",
+      fetchImpl: async () => Response.json(fixture.body),
+    });
+    const event = await client.events.get("id");
+    expect(event.visitor_kind).toBe(VisitorKind.AiBot);
+    const ai: AIAgent | undefined = event.ai;
+    expect(ai?.name).toBe("ChatGPT-User");
+    expect(ai?.provider).toBe("OpenAI");
+    expect(ai?.purpose).toBe(AIPurpose.UserFetch);
+    expect(ai?.runtime).toBe(AIRuntime.ProviderCloud);
+    expect(ai?.declared).toBe(true);
+    expect(ai?.verification.method).toBe(AIVerificationMethod.None);
+    expect(ai?.verification.result).toBe(AIVerificationResult.NotAttempted);
+  });
+
+  it("leaves ai absent on an event that is not an AI agent", async () => {
+    const fixture = fixtures.responses.find(
+      (f: { name: string }) => f.name === "event",
+    );
+    const client = load({
+      secretKey: "fly_sk_development_contract",
+      fetchImpl: async () => Response.json(fixture.body),
+    });
+    const event = await client.events.get("id");
+    expect(event.visitor_kind).not.toBe(VisitorKind.AiBot);
+    expect(event.ai).toBeUndefined();
+  });
+
+  it("decodes AI agent values a newer server adds", async () => {
+    const fixture = fixtures.responses.find(
+      (f: { name: string }) => f.name === "ai_agent",
+    );
+    const body = {
+      ...fixture.body,
+      visitor_kind: "not_yet_a_kind",
+      ai: {
+        ...fixture.body.ai,
+        purpose: "not_yet_a_purpose",
+        runtime: "not_yet_a_runtime",
+        verification: {
+          method: "not_yet_a_method",
+          result: "not_yet_a_result",
+        },
+      },
+    };
+    const client = load({
+      secretKey: "fly_sk_development_contract",
+      fetchImpl: async () => Response.json(body),
+    });
+    const event = await client.events.get("id");
+    expect(event.visitor_kind).toBe("not_yet_a_kind");
+    expect(event.ai?.purpose).toBe("not_yet_a_purpose");
+    expect(event.ai?.runtime).toBe("not_yet_a_runtime");
+    expect(event.ai?.verification).toEqual({
+      method: "not_yet_a_method",
+      result: "not_yet_a_result",
+    });
   });
 
   it("decodes attest_skipped and downgrade on an unproven native attestation", async () => {

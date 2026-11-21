@@ -153,6 +153,11 @@ export class EventsClient {
       params.set("limit", String(positiveInt(query.limit, "limit")));
     if (query.visitor !== undefined) params.set("visitor", query.visitor);
     if (query.level !== undefined) params.set("level", query.level);
+    if (query.kind !== undefined) params.set("kind", query.kind);
+    if (query.aiProvider !== undefined)
+      params.set("ai_provider", query.aiProvider);
+    if (query.aiPurpose !== undefined)
+      params.set("ai_purpose", query.aiPurpose);
 
     const search = params.toString();
     return this.transport.get<EventPage>(
