@@ -256,6 +256,33 @@ describe("what is sent", () => {
     );
   });
 
+  it("treats an empty or whitespace-only signature header as absent", async () => {
+    const { sightings, sent } = harness();
+    const headers = {
+      signature: " \t ",
+      "signature-input": "",
+      "signature-agent": "  ",
+    };
+    sightings.report(request(gptbot, "198.51.100.1", headers), html());
+    sightings.report(request(gptbot, "198.51.100.1"), html());
+    await sightings.flush();
+    // Unsigned and without Signature-Agent, so both fold into one item.
+    expect(sent).toEqual([
+      [
+        {
+          user_agent: gptbot,
+          client_ip: "198.51.100.1",
+          host: "shop.test",
+          method: "GET",
+          count: 2,
+        },
+      ],
+    ]);
+    expect(
+      sightings.lookup(request(gptbot, "198.51.100.1", headers)).agent,
+    ).toBe(gptbot);
+  });
+
   it("does not report a request whose address cannot be resolved", async () => {
     const { sightings, sent, errors } = harness();
     for (const ip of ["", "1.2.3.4, 5.6.7.8", "unknown"])
@@ -337,6 +364,20 @@ describe("the answer cache", () => {
     );
     clock.now = 10_000;
     expect(sightings.lookup(request("short", "198.51.100.1"))).toBe(
+      AgentSightings.Unknown,
+    );
+  });
+
+  it("remembers an answer for at most 86400 seconds, whatever its ttl", async () => {
+    const { sightings, clock } = harness((items) => answer(items, 10_000_000));
+    sightings.report(request("long", "198.51.100.1"), html());
+    await sightings.flush();
+    clock.now = 86_400_000 - 1;
+    expect(sightings.lookup(request("long", "198.51.100.1")).agent).toBe(
+      "long",
+    );
+    clock.now = 86_400_000;
+    expect(sightings.lookup(request("long", "198.51.100.1"))).toBe(
       AgentSightings.Unknown,
     );
   });
@@ -451,6 +492,20 @@ describe("buffering", () => {
     expect(sent.map((batch) => batch.length)).toEqual([200, 200]);
   });
 
+  it("waits at most 6 seconds for a report already in flight, and resolves", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { sightings, sent } = harness(() => new Promise<Response>(() => {}));
+    for (let i = 0; i < 200; i++)
+      sightings.report(request(`ua-${i}`, "198.51.100.1"), html());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent).toHaveLength(1);
+    let done = false;
+    const flushed = sightings.flush().then(() => (done = true));
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(done).toBe(true);
+    await flushed;
+  });
+
   it("holds at most 1000 requests and counts the rest as dropped", async () => {
     const { sightings, sent, clock } = harness((items) =>
       sent.length === 1
@@ -517,6 +572,54 @@ describe("the failure table", () => {
     await sightings.flush();
     expect(sent[1]!.map((item) => item.user_agent)).toEqual(["a", "b"]);
   });
+
+  it.each(["0", "Thu, 01 Jan 1970 00:00:00 GMT"])(
+    "waits at least 1 second after a 429 whose Retry-After is %s",
+    async (retryAfter) => {
+      let refuse = true;
+      const { sightings, sent, clock } = harness((items) =>
+        refuse
+          ? new Response("{}", {
+              status: 429,
+              headers: { "retry-after": retryAfter },
+            })
+          : answer(items),
+      );
+      sightings.report(request("a", "198.51.100.1"), html());
+      await sightings.flush();
+      refuse = false;
+      clock.now = 999;
+      await sightings.flush();
+      expect(sent).toHaveLength(1);
+      clock.now = 1_000;
+      await sightings.flush();
+      expect(sent).toHaveLength(2);
+    },
+  );
+
+  it.each(["-5", "soon"])(
+    "reads a Retry-After of %s as missing and waits 60 seconds",
+    async (retryAfter) => {
+      let refuse = true;
+      const { sightings, sent, clock } = harness((items) =>
+        refuse
+          ? new Response("{}", {
+              status: 429,
+              headers: { "retry-after": retryAfter },
+            })
+          : answer(items),
+      );
+      sightings.report(request("a", "198.51.100.1"), html());
+      await sightings.flush();
+      refuse = false;
+      clock.now = 59_999;
+      await sightings.flush();
+      expect(sent).toHaveLength(1);
+      clock.now = 60_000;
+      await sightings.flush();
+      expect(sent).toHaveLength(2);
+    },
+  );
 
   it("waits for the next UTC day after a daily 429 without Retry-After", async () => {
     const { sightings, sent, clock } = harness(

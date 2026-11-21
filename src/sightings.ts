@@ -45,6 +45,10 @@ const MAX_COUNT = 1_000_000;
 const UNAUTHORIZED_PAUSE_MS = 60_000;
 /** Pause after a `429` that did not say how long to wait. */
 const RATE_LIMITED_PAUSE_MS = 60_000;
+/** Shortest pause after a `429`, whatever its Retry-After says. */
+const MIN_RATE_LIMITED_PAUSE_MS = 1_000;
+/** Longest an answer is remembered, whatever its ttl says. */
+const MAX_TTL_SECONDS = 86_400;
 /** First and longest wait before retrying an unreachable API. */
 const BACKOFF_FIRST_MS = 1_000;
 const BACKOFF_MAX_MS = 60_000;
@@ -555,7 +559,11 @@ export class AgentSightings {
         typeof item.visitor_kind !== "string"
       )
         return;
-      this.#remember(batch[index]!.key, frozen(item), now + item.ttl * 1000);
+      this.#remember(
+        batch[index]!.key,
+        frozen(item),
+        now + Math.min(item.ttl, MAX_TTL_SECONDS) * 1000,
+      );
     });
     return "sent";
   }
@@ -575,13 +583,18 @@ export class AgentSightings {
       const status = error.status;
       if (status === 429) {
         this.#restore(batch);
+        // An unreadable or negative Retry-After reads as missing; a zero or
+        // past one still waits a second.
         this.#pausedUntil =
           this.#now() +
-          (error.retryAfter !== null
-            ? error.retryAfter * 1000
-            : error.rateLimitScope === "daily"
-              ? untilNextUtcDay()
-              : RATE_LIMITED_PAUSE_MS);
+          Math.max(
+            MIN_RATE_LIMITED_PAUSE_MS,
+            error.retryAfter !== null
+              ? error.retryAfter * 1000
+              : error.rateLimitScope === "daily"
+                ? untilNextUtcDay()
+                : RATE_LIMITED_PAUSE_MS,
+          );
         return "held";
       }
       if (status === 503) return this.#retryLater(batch);
