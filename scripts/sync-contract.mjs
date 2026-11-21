@@ -16,6 +16,17 @@ for (const name of ["openapi.json", "fixtures.json"]) {
     throw new Error(`Invalid contract hash: ${name}`);
   outputs.set(`contract/${name}`, raw);
 }
+// The agent sightings cache key vectors; hashed when the manifest lists them.
+for (const name of ["agent-sightings-vectors.json"]) {
+  const raw = readFileSync(resolve(source, name));
+  const expected = manifest.files[name];
+  if (
+    expected !== undefined &&
+    createHash("sha256").update(raw).digest("hex") !== expected
+  )
+    throw new Error(`Invalid contract hash: ${name}`);
+  outputs.set(`contract/${name}`, raw);
+}
 outputs.set(
   "contract/manifest.json",
   readFileSync(resolve(source, "manifest.json")),

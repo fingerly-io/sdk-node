@@ -1,4 +1,28 @@
 export interface paths {
+    "/api/v1/agents/sightings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report the requests your server served
+         * @description Reports up to 200 requests your server served, as raw input, and answers what sent each one: `visitor_kind`, the agent's name and, for an AI agent, the `ai` object with how its claim was checked. AI crawlers and fetchers that never run a page's JavaScript are seen only this way.
+         *
+         *     Free, and never part of the identification count. Each answer carries a `ttl`: the seconds it may be reused for the exact same user agent, address and Signature-Agent, so a server SDK reports a repeat request as a `count` on its next call rather than asking again. A signed request has a `ttl` of 0. When `rules_version` changes, drop every remembered answer.
+         *
+         *     Calls are limited per key and per server address, and items per organization per day; a refused call answers `429` with `Retry-After` and `Fingerly-RateLimit-Scope`, and a server SDK then treats its requests as unchecked and serves them as usual.
+         */
+        post: operations["reportRequestsYourServerServed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attestation/challenge": {
         parameters: {
             query?: never;
@@ -904,6 +928,53 @@ export interface components {
              */
             result: "pass" | "fail" | "not_attempted";
         };
+        AgentSightingIn: {
+            /** @description The client's address from the server's trusted socket or edge header: one IPv4 or IPv6 literal, never a forwarded list */
+            client_ip: string;
+            /**
+             * Format: int64
+             * @description How many times this exact request was served since the last report, this one included; 1 when absent, at most 1000000
+             */
+            count?: number;
+            /** @description The Host the request was sent to, which a signing agent signs */
+            host?: string;
+            /** @description The request method; GET when absent */
+            method?: string;
+            /** @description The Signature header, when the request had one. At most 4096 bytes */
+            signature?: string;
+            /** @description The Signature-Agent header, when the request had one. At most 4096 bytes */
+            signature_agent?: string;
+            /** @description The Signature-Input header, when the request had one. At most 4096 bytes */
+            signature_input?: string;
+            /** @description The request's User-Agent header, as received; empty when it had none. At most 4096 bytes */
+            user_agent: string;
+        };
+        AgentSightingOut: {
+            /** @description The agent's name where the server knows it, such as GPTBot or Googlebot. Absent for a person's browser */
+            agent?: string;
+            /** @description Present when visitor_kind is ai_bot: who operates the agent, what its traffic is for, and how far its claim was checked */
+            ai?: components["schemas"]["AIAgentOut"] | null;
+            /**
+             * Format: int64
+             * @description Seconds this answer may be reused for the exact same user agent, address and Signature-Agent; 0 for a signed request, which is checked every time
+             */
+            ttl: number;
+            /**
+             * @description human, ai_bot, automation or search_crawler. New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            visitor_kind: "human" | "ai_bot" | "automation" | "search_crawler";
+        };
+        AgentSightingsIn: {
+            /** @description The requests, at most 200. Each is answered in the same position of the answer's items */
+            items?: components["schemas"]["AgentSightingIn"][];
+        };
+        AgentSightingsOut: {
+            /** @description One answer per reported request, in the same order */
+            items: components["schemas"]["AgentSightingOut"][];
+            /** @description Names the classification rules; when it changes, drop every remembered answer */
+            rules_version: string;
+        };
         AttestEnvelope: {
             /** @description Base64 CBOR App Attest assertion object */
             assertion?: string;
@@ -1795,6 +1866,75 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    reportRequestsYourServerServed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentSightingsIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSightingsOut"];
+                };
+            };
+            /** @description No usable secret SDK key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The organization is suspended or closed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `invalid_request`: no items or more than 200, a header over 4096 bytes, an address that is not one IP literal, or a count over 1000000 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `rate_limited`: over the key's, the address's or the organization's rate, or the organization's daily allowance (`Fingerly-RateLimit-Scope: daily`); retry after Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     requestAttestationChallenge: {
         parameters: {
             query?: never;
