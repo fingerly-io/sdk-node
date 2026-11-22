@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.5.0
+
+- Events name the AI agent behind an `ai_bot` visit as `event.ai`
+  (`AIAgent`: `name`, `provider`, `purpose`, `runtime`, `declared` and
+  `verification`), with the named values `AIPurpose`, `AIRuntime`,
+  `AIVerificationMethod` and `AIVerificationResult`. `fingerly.events.list`
+  filters by `kind`, `aiProvider` and `aiPurpose`.
+- Added the agent sightings reporter, `Fingerly.createAgentSightings({
+  secretKey, clientIp })`. Its `handleNode` middleware (Express, NestJS,
+  `node:http`) and `report(request, response)` for Fetch handlers report the
+  pages your server served in the background, never delaying a response;
+  `lookup` and `lookupNode` answer from memory what Fingerly said about the
+  same request, or `AgentSightings.Unknown`. `flush()` and `close()` send
+  what is waiting and never reject. `fingerly.agents.sightings(items)` is
+  the call underneath.
+- The proxy forwards the Web Bot Auth `Signature`, `Signature-Input` and
+  `Signature-Agent` headers, each up to 4096 bytes.
+- `Signal` names `ai_spoofed` and `identity_obfuscated`; `vpn_timezone` is
+  gone, as the server no longer sends it.
+- `FingerlyAPIError` carries `rateLimitScope`, such as `daily`, on a `429`.
+- A 2xx answer that is not the JSON object the API sends, such as `null`, an
+  array, or an event whose `ai` lacks a field, rejects with
+  `FingerlyAPIError` `invalid_response` instead of reaching your code, where
+  reading a field threw a `TypeError`. An `ai` of `null` reads as absent.
+- `lookup` only returns answers of the shape `AgentAnswer` declares, so
+  reading `answer.ai.verification.result` never throws.
+- `flush()` and `close()` stop once a report fails, so stopping while the
+  API is down waits one 5 second deadline, not two.
+- After a `429`, the reporter pauses for at most 24 hours, whatever its
+  `Retry-After` says.
+- `handleNode` reports a page whose headers were passed to
+  `res.writeHead(status, headers)`, as plain `node:http` handlers and Fastify
+  write them; such pages were never reported.
+- A reported request carries its `Host` as received, an HTTP/2
+  `:authority` included, and none when the request had none, instead of
+  `localhost`.
+- An async `onError` hook that rejects, on the proxy or the reporter, no
+  longer ends the process with an unhandled rejection.
+- The Node proxy forwards the host of an HTTP/2 request, so the API can check
+  a Web Bot Auth signature on it.
+- The reporter never sends a field the API would refuse the whole report
+  over, measured as the API decodes it: a request whose user agent or method
+  is over 4096 bytes is not reported, and a `Host` over 4096 bytes is left
+  out of its item.
+- `VisitorKind.Unknown` names the answer the API gives a reported request it
+  could not use: `ttl` 0, so it is never remembered and stays
+  `AgentSightings.Unknown` to `lookup`, while the other requests of the
+  report are answered as usual. A `422` now means no request in the report
+  was usable.
+- `contentTypes` refuses an entry that could never match, such as
+  `text/html; charset=utf-8`; give the media type alone.
+- Every API call sends `User-Agent: fingerly-node/<version>`.
+- The README and `DeviceCheckClient` describe one read and one write token
+  per identification: a check-then-mark flow reads and writes on the same
+  request ID.
+
 ## 0.4.1
 
 - `AttestSkippedReason` members describe when a native SDK sends each value.
