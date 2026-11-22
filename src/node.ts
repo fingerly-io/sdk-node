@@ -92,9 +92,10 @@ async function answer(
     const scheme = (req.socket as { encrypted?: boolean }).encrypted
       ? "https"
       : "http";
+    const headers = toHeaders(req.headers);
     const init: RequestInit & { duplex?: "half" } = {
       method: req.method ?? "GET",
-      headers: toHeaders(req.headers),
+      headers,
       signal: abort.signal,
     };
     if (init.method !== "GET" && init.method !== "HEAD") {
@@ -102,7 +103,7 @@ async function answer(
       init.duplex = "half";
     }
     request = new Request(
-      `${scheme}://${req.headers.host ?? "localhost"}${rawUrl}`,
+      `${scheme}://${headers.get("host") ?? "localhost"}${rawUrl}`,
       init,
     );
   } catch {
@@ -220,6 +221,15 @@ export function toHeaders(raw: IncomingMessage["headers"]): Headers {
       // A header Fetch refuses is not one the proxy forwards anyway.
     }
   }
+  // HTTP/2 sends the Host as `:authority`, a name Fetch refuses; without it
+  // the API cannot check a Web Bot Auth signature, which signs the host.
+  const authority = raw[":authority"];
+  if (!headers.has("host") && typeof authority === "string" && authority)
+    try {
+      headers.set("host", authority);
+    } catch {
+      // Not a value Fetch accepts: the request simply has no host.
+    }
   return headers;
 }
 
