@@ -257,6 +257,54 @@ describe("what is sent", () => {
     );
   });
 
+  it("measures each field as the API does, after invalid bytes became U+FFFD", async () => {
+    const { sightings, sent } = harness();
+    // 2000 bytes on the wire, 6000 as the UTF-8 the API decodes.
+    const invalid = "\xff".repeat(2000);
+    const report = (
+      ip: string,
+      headers: Record<string, string> = {},
+      init: RequestInit = {},
+    ) =>
+      sightings.report(
+        new Request("https://shop.test/page", {
+          ...init,
+          headers: { "user-agent": gptbot, "x-test-ip": ip, ...headers },
+        }),
+        html(),
+      );
+    report("198.51.100.1", { "user-agent": invalid });
+    report("198.51.100.2", {}, { method: "M".repeat(4097) });
+    report("198.51.100.3", { host: invalid });
+    report("198.51.100.4", { host: "h".repeat(4097) });
+    report("198.51.100.5", {
+      signature: invalid,
+      "signature-input": "sig1=()",
+    });
+    report("198.51.100.6", { host: "h".repeat(4096) });
+    await sightings.flush();
+    // A long user agent or method is not reported; a long Host or signature
+    // header is left out of an item that is still reported.
+    const items = sent.flat();
+    expect(items.map((item) => item.client_ip)).toEqual([
+      "198.51.100.3",
+      "198.51.100.4",
+      "198.51.100.5",
+      "198.51.100.6",
+    ]);
+    expect(items.map((item) => item.host?.length ?? null)).toEqual([
+      null,
+      null,
+      "shop.test".length,
+      4096,
+    ]);
+    expect(items[2]!.signature).toBeUndefined();
+    for (const item of items)
+      for (const value of Object.values(item))
+        if (typeof value === "string")
+          expect(Buffer.byteLength(value)).toBeLessThanOrEqual(4096);
+  });
+
   it("treats an empty or whitespace-only signature header as absent", async () => {
     const { sightings, sent } = harness();
     const headers = {

@@ -808,10 +808,13 @@ export function canonicalIp(value: string): string | null {
 }
 
 /**
- * The fields of one request, or null when its user agent is too long to
- * report. A Web Bot Auth header over 4096 bytes is left out, and counts as
- * absent for the key too. `host` is the `Host` as received where the caller
- * has it (null when the request had none); otherwise the request's own.
+ * The fields of one request, or null when its user agent or method is too
+ * long to report: the API refuses a whole report over one such item. A Web
+ * Bot Auth header or a `Host` over 4096 bytes is left out, and a left-out
+ * header counts as absent for the key too. Lengths are those of the UTF-8
+ * the API receives, after an invalid byte became U+FFFD. `host` is the
+ * `Host` as received where the caller has it (null when the request had
+ * none); otherwise the request's own.
  */
 function capture(
   request: Request,
@@ -821,20 +824,21 @@ function capture(
 ): Capture | null {
   const headers = request.headers;
   const userAgent = headerValue(headers.get("user-agent") ?? "");
-  if (tooLong(userAgent)) return null;
+  if (tooLong(userAgent) || tooLong(headerValue(method))) return null;
   const signature = optional(headers.get("signature"));
   const signatureInput = optional(headers.get("signature-input"));
   const signatureAgent = optional(headers.get("signature-agent"));
   const signed = signature !== null && signatureInput !== null;
-  const received =
-    host !== undefined ? host : headers.get("host") || hostOf(request.url);
+  const received = optional(
+    host !== undefined ? host : headers.get("host") || hostOf(request.url),
+  );
 
   const item: AgentSighting & { count: number } = {
     user_agent: userAgent.text,
     client_ip: ip,
     count: 1,
   };
-  if (received) item.host = headerValue(received).text;
+  if (received !== null) item.host = received.text;
   if (method !== "") item.method = method;
   if (signature !== null) item.signature = signature.text;
   if (signatureInput !== null) item.signature_input = signatureInput.text;
@@ -885,7 +889,7 @@ function tooLong(value: HeaderValue): boolean {
   );
 }
 
-/** A Web Bot Auth header, or null when absent, empty or too long. */
+/** A header left out when absent, empty or too long: Web Bot Auth or Host. */
 function optional(value: string | null): HeaderValue | null {
   if (value === null || value === "") return null;
   const header = headerValue(value);
