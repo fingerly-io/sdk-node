@@ -30,7 +30,6 @@ export const Signal = {
   ResidentialProxyHighConfidence: "residential_proxy_high_confidence",
   Vpn: "vpn",
   VpnPublic: "vpn_public",
-  VpnTimezone: "vpn_timezone",
   VpnRelay: "vpn_relay",
   VpnMobile: "vpn_mobile",
   VpnOsMismatch: "vpn_os_mismatch",
@@ -71,11 +70,13 @@ export const Signal = {
   Tampering: "tampering",
   AntidetectBrowser: "antidetect_browser",
   FingerprintSuppressed: "fingerprint_suppressed",
+  IdentityObfuscated: "identity_obfuscated",
   DeveloperTools: "developer_tools",
   RemoteControl: "remote_control",
   Bot: "bot",
   Automation: "automation",
   BadBot: "bad_bot",
+  AiSpoofed: "ai_spoofed",
   FetchMetadataMissing: "fetch_metadata_missing",
   WebTicketMissing: "web_ticket_missing",
   WebTicketInvalid: "web_ticket_invalid",
@@ -261,22 +262,86 @@ export const DeviceKind = {
 /** One of the kinds in {@link DeviceKind}. */
 export type DeviceKind = (typeof DeviceKind)[keyof typeof DeviceKind];
 
-/** An event's `visitor_kind`: what sort of client made the request. */
+/**
+ * An event's `visitor_kind`: what sort of client made the request.
+ *
+ * - `Unknown`: only in an agent sightings answer: a request the server could
+ *   not use; ttl 0, never remembered. An event never carries it.
+ */
 export const VisitorKind = {
   Human: "human",
   AiBot: "ai_bot",
   Automation: "automation",
   SearchCrawler: "search_crawler",
+  Unknown: "unknown",
 } as const;
 /** One of the kinds in {@link VisitorKind}. */
 export type VisitorKind = (typeof VisitorKind)[keyof typeof VisitorKind];
 
 /**
+ * An AI agent's `purpose`: what its operator says the traffic is for.
+ *
+ * - `Training`: collecting content to train models.
+ * - `Search`: indexing for an AI answer or search product.
+ * - `UserFetch`: reading a page a person asked an assistant to read.
+ * - `Agent`: driving a browser on a person's behalf.
+ */
+export const AIPurpose = {
+  Training: "training",
+  Search: "search",
+  UserFetch: "user_fetch",
+  Agent: "agent",
+} as const;
+/** One of the purposes in {@link AIPurpose}. */
+export type AIPurpose = (typeof AIPurpose)[keyof typeof AIPurpose];
+
+/**
+ * An AI agent's `runtime`: where it runs. `ProviderCloud` is the operator's
+ * own infrastructure, `HostedBrowser` a third party's cloud browser and
+ * `UserDevice` a person's own browser.
+ */
+export const AIRuntime = {
+  ProviderCloud: "provider_cloud",
+  HostedBrowser: "hosted_browser",
+  UserDevice: "user_device",
+} as const;
+/** One of the runtimes in {@link AIRuntime}. */
+export type AIRuntime = (typeof AIRuntime)[keyof typeof AIRuntime];
+
+/**
+ * How an AI agent's claimed identity was checked: `Signature` (a signed
+ * request), `IpList` (the operator's published address ranges), `ReverseDns`
+ * (a reverse lookup confirmed forward) or `None`.
+ */
+export const AIVerificationMethod = {
+  Signature: "signature",
+  IpList: "ip_list",
+  ReverseDns: "reverse_dns",
+  None: "none",
+} as const;
+/** One of the methods in {@link AIVerificationMethod}. */
+export type AIVerificationMethod =
+  (typeof AIVerificationMethod)[keyof typeof AIVerificationMethod];
+
+/**
+ * What checking an AI agent's claimed identity found: `Pass` (the claim
+ * held), `Fail` (it was checked and did not hold) or `NotAttempted`.
+ */
+export const AIVerificationResult = {
+  Pass: "pass",
+  Fail: "fail",
+  NotAttempted: "not_attempted",
+} as const;
+/** One of the results in {@link AIVerificationResult}. */
+export type AIVerificationResult =
+  (typeof AIVerificationResult)[keyof typeof AIVerificationResult];
+
+/**
  * The `code` of a `FingerlyAPIError` from `fingerly.deviceCheck`.
  *
- * - `device_check_not_held` (404): no token is held for the event.
- * - `device_check_spent` (409): the token was used, or a retry was not the
- *   first request.
+ * - `device_check_not_held` (404): no token is held for that call.
+ * - `device_check_spent` (409): the call's token was used, a read's by a
+ *   read or a write's by a write, or a retry was not the first request.
  * - `device_check_busy` (409): another call is using the token.
  * - `credential_unavailable` (409): the project's Apple key is missing,
  *   refused, or has DeviceCheck off; the token is kept.

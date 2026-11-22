@@ -178,6 +178,44 @@ describe("reading one event", () => {
       undefined,
     ]);
   });
+  it("refuses an AI agent that is not what AIAgent declares, on get and list", async () => {
+    const agent = {
+      name: "GPTBot",
+      provider: "OpenAI",
+      purpose: "training",
+      runtime: "provider_cloud",
+      declared: true,
+      verification: { method: "ip_list", result: "pass" },
+    };
+    const respond = (body: unknown) =>
+      load({ secretKey: key, fetchImpl: async () => Response.json(body) })
+        .events;
+    for (const ai of [
+      "GPTBot",
+      [],
+      { ...agent, name: null },
+      { ...agent, declared: "true" },
+      { ...agent, verification: null },
+      { ...agent, verification: { method: "ip_list" } },
+    ]) {
+      const unusable = { status: 200, code: "invalid_response" };
+      await expect(respond({ ...event, ai }).get("id")).rejects.toMatchObject(
+        unusable,
+      );
+      await expect(
+        respond({ rows: [event, { ...event, ai }] }).list(),
+      ).rejects.toMatchObject(unusable);
+    }
+    for (const rows of [null, undefined, {}, [null]])
+      await expect(respond({ rows }).list()).rejects.toMatchObject({
+        code: "invalid_response",
+      });
+    // An ai of null reads as absent; open values and extra fields pass.
+    const absent = await respond({ ...event, ai: null }).get("id");
+    expect("ai" in absent).toBe(false);
+    const open = { ...agent, purpose: "quantum", colour: "blue" };
+    expect((await respond({ ...event, ai: open }).get("id")).ai).toEqual(open);
+  });
   it("makes exactly one request and never retries, whatever comes back", async () => {
     for (const status of [400, 401, 403, 404, 429, 500]) {
       const fetchImpl = vi.fn(async () =>
@@ -301,6 +339,32 @@ describe("reading one event", () => {
     await expect(
       respond(new Response(new Uint8Array(4 * 1_048_576 + 1))),
     ).rejects.toMatchObject({ status: 200, code: "response_too_large" });
+  });
+  it.each([
+    ["null", "null"],
+    ["an array", "[]"],
+    ["a string", '"event"'],
+    ["a number", "5"],
+  ])("refuses a 2xx whose JSON is %s on every read", async (_name, body) => {
+    const client = load({
+      secretKey: key,
+      fetchImpl: async () => new Response(body),
+    });
+    const unusable = { status: 200, code: "invalid_response" };
+    await expect(client.events.get("id")).rejects.toMatchObject(unusable);
+    await expect(client.events.list()).rejects.toMatchObject(unusable);
+    await expect(client.events.consume("id")).rejects.toMatchObject(unusable);
+    // verify reads fields of the event: never a TypeError instead.
+    await expect(client.events.verify("id")).rejects.toBeInstanceOf(
+      FingerlyAPIError,
+    );
+    await expect(
+      client.deviceCheck.write("id", { bit0: true }),
+    ).rejects.toMatchObject(unusable);
+    await expect(client.deviceCheck.query("id")).rejects.toMatchObject(
+      unusable,
+    );
+    await expect(client.agents.sightings([])).rejects.toMatchObject(unusable);
   });
   it("parses both forms of Retry-After", () => {
     const now = Date.parse("2026-11-04T12:00:00Z");
@@ -433,6 +497,29 @@ describe("proxy boundary", () => {
     expect((await pending).status).toBe(499);
     expect(upstreamSignal?.aborted).toBe(true);
     expect(failures).toEqual(["timeout", "upstream"]);
+  });
+
+  it("handles the rejection of an async onError, which would end the process", async () => {
+    // A promise's then, observed: an unhandled rejection would end the run.
+    const then = vi.fn();
+    const proxy = createProxy({
+      proxyKey,
+      clientIp: () => "127.0.0.1",
+      fetchImpl: async () => {
+        throw new TypeError("fetch failed");
+      },
+      onError: () => ({ then }) as unknown as void,
+    });
+    const response = await proxy(
+      new Request("https://shop.test/k7x2qm4a", {
+        method: "POST",
+        headers: browserKey,
+        body: "{}",
+      }),
+    );
+    expect(response.status).toBe(502);
+    expect(then).toHaveBeenCalledTimes(1);
+    expect(then.mock.calls[0]![1]).toBeTypeOf("function");
   });
 
   it("caps upstream bodies at 4 MiB and never relays a truncated one", async () => {
@@ -778,6 +865,83 @@ describe("proxy boundary", () => {
     );
     expect(supplement.status).toBe(404);
     expect(supplement.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("forwards the Web Bot Auth headers unchanged and drops one over 4096 bytes", async () => {
+    const seen: Headers[] = [];
+    const fetchImpl = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers));
+      return new Response('{"request_id":"r"}', {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "x-request-id": "req-1",
+          "fingerly-balance-micros": "999",
+        },
+      });
+    });
+    const proxy = createProxy({
+      proxyKey,
+      path: "/k7x2qm4a",
+      allowedOrigins: ["https://app.shop.test"],
+      clientIp: () => "203.0.113.42",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const signed = {
+      signature: "sig1=:dGVzdC1zaWduYXR1cmU=:",
+      "signature-input":
+        'sig1=("@authority" "signature-agent");created=1735689600;keyid="k1";alg="ed25519";tag="web-bot-auth"',
+      "signature-agent": '"https://chatgpt.com"',
+    };
+    const post = (extra: Record<string, string>) =>
+      proxy(
+        new Request("https://shop.test/k7x2qm4a", {
+          method: "POST",
+          headers: {
+            "x-api-key": "fly_pk_development_test",
+            origin: "https://app.shop.test",
+            host: "shop.test",
+            "x-custom-token": "app-header",
+            ...signed,
+            ...extra,
+          },
+          body: "{}",
+        }),
+      );
+
+    const res = await post({});
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-request-id")).toBe("req-1");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.headers.get("fingerly-balance-micros")).toBeNull();
+    const sent = seen[0]!;
+    expect(sent.get("signature")).toBe(signed.signature);
+    expect(sent.get("signature-input")).toBe(signed["signature-input"]);
+    expect(sent.get("signature-agent")).toBe(signed["signature-agent"]);
+    expect(sent.get("x-fingerly-host")).toBe("shop.test");
+    expect(sent.get("x-custom-token")).toBeNull();
+
+    const atCap = `"https://${"a".repeat(4096 - 10)}"`;
+    expect(atCap).toHaveLength(4096);
+    const capped = await post({
+      signature: `sig1=:${"A".repeat(4097)}:`,
+      "signature-agent": atCap,
+    });
+    expect(capped.status).toBe(200);
+    const cappedSent = seen[1]!;
+    expect(cappedSent.get("signature")).toBeNull();
+    expect(cappedSent.get("signature-input")).toBe(signed["signature-input"]);
+    expect(cappedSent.get("signature-agent")).toBe(atCap);
+
+    const preflight = await proxy(
+      new Request("https://shop.test/k7x2qm4a", {
+        method: "OPTIONS",
+        headers: { origin: "https://app.shop.test" },
+      }),
+    );
+    expect(preflight.headers.get("access-control-allow-headers")).toBe(
+      "content-type, x-api-key, idempotency-key, x-fingerly-sdk-platform",
+    );
   });
 });
 

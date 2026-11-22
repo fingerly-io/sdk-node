@@ -4,9 +4,11 @@ import {
   normalizeApiVersion,
   parseKey,
   positiveInt,
+  SDK_VERSION,
 } from "./config.js";
 import { withDeadline } from "./deadline.js";
 import { MAX_RESPONSE_BYTES, readLimited } from "./body.js";
+import { isObject } from "./decode.js";
 import {
   FingerlyAPIError,
   FingerlyConnectionError,
@@ -21,6 +23,8 @@ const DEFAULT_TIMEOUT_MS = 5_000;
 const SPEND_RETRIES = 2;
 /** Base pause before a retry; the nth retry waits n times this. */
 const RETRY_DELAY_MS = 200;
+/** What every call names itself as, in place of the runtime's own `node`. */
+const USER_AGENT = `fingerly-node/${SDK_VERSION}`;
 
 /** Waits `ms`, or rejects with the signal's reason when it aborts first. */
 function pause(ms: number, signal?: AbortSignal): Promise<void> {
@@ -36,6 +40,21 @@ function pause(ms: number, signal?: AbortSignal): Promise<void> {
     };
     signal?.addEventListener("abort", onAbort, { once: true });
   });
+}
+
+/** Per-call options for {@link APITransport.postJSON}. */
+export interface SendOptions {
+  /** Caller cancellation; its reason is preserved. */
+  signal?: AbortSignal | undefined;
+  /** Deadline for this call, replacing the client's. */
+  timeoutMs?: number;
+  /** Set to true once the answer's status line arrived. */
+  progress?: { responded: boolean };
+  /**
+   * Checks a 2xx answer's object, and may tidy it in place; false turns it
+   * into an `invalid_response` error.
+   */
+  accept?: (body: Record<string, unknown>) => boolean;
 }
 
 /** Shape of the API's error envelope; every field is treated as untrusted. */
@@ -116,14 +135,26 @@ export class APITransport {
    *
    * @param path Path below the versioned base URL, already encoded.
    * @param signal Caller cancellation; its reason is preserved.
+   * @param accept Checks the answer's object; false makes it unusable.
    * @throws {FingerlyAPIError} On any non-2xx response, redirects included,
-   *   and on a 2xx that is not JSON or exceeds 4 MiB.
+   *   and on a 2xx that exceeds 4 MiB, is not a JSON object or fails
+   *   `accept`.
    * @throws {FingerlyTimeoutError} When the deadline elapses.
    * @throws {FingerlyConnectionError} When the API cannot be reached or the
    *   connection drops mid-response.
    */
-  get<T>(path: string, signal?: AbortSignal): Promise<T> {
-    return this.send<T>("GET", path, undefined, signal);
+  get<T>(
+    path: string,
+    signal?: AbortSignal,
+    accept?: SendOptions["accept"],
+  ): Promise<T> {
+    return this.send<T>(
+      "GET",
+      path,
+      undefined,
+      signal,
+      accept ? { accept } : {},
+    );
   }
 
   /**
@@ -169,11 +200,36 @@ export class APITransport {
     }
   }
 
+  /**
+   * Sends one POST with a JSON body and parses its JSON answer. One attempt,
+   * never retried.
+   *
+   * @param path Path below the versioned base URL, already encoded.
+   * @param body JSON value to send.
+   * @param options Caller cancellation, a deadline replacing the client's,
+   *   and a progress record whose `responded` turns true once the answer's
+   *   status arrived, so a caller can tell a request that never reached the
+   *   API from one whose answer was lost.
+   */
+  postJSON<T>(
+    path: string,
+    body: unknown,
+    options: SendOptions = {},
+  ): Promise<T> {
+    return this.send<T>("POST", path, JSON.stringify(body), options.signal, {
+      ...(options.timeoutMs !== undefined
+        ? { timeoutMs: options.timeoutMs }
+        : {}),
+      ...(options.progress !== undefined ? { progress: options.progress } : {}),
+    });
+  }
+
   private send<T>(
     method: string,
     path: string,
     payload: string | undefined,
     signal?: AbortSignal,
+    extra: Omit<SendOptions, "signal"> = {},
   ): Promise<T> {
     // Validated on use rather than at construction, so a build without
     // secrets can load the module that creates the client. A public, proxy or
@@ -183,48 +239,62 @@ export class APITransport {
     } catch (error) {
       return Promise.reject(error);
     }
-    return withDeadline(this.timeoutMs, signal, async (bounded) => {
-      let response: Response;
-      let bytes: Buffer | null;
-      try {
-        const headers: Record<string, string> = {
-          "x-api-key": this.#secretKey!,
-          accept: "application/json",
-        };
-        if (payload !== undefined) headers["content-type"] = "application/json";
-        // Read at call time: a client made at module scope predates a
-        // framework's fetch patch, and the framework must see `no-store` to
-        // treat this read as dynamic.
-        response = await (this.fetchImpl ?? fetch)(this.baseUrl + path, {
-          method,
-          headers,
-          ...(payload !== undefined ? { body: payload } : {}),
-          redirect: "manual",
-          // Frameworks that patch fetch (Next.js) otherwise serve a read from
-          // their cache, or freeze it into a build, as a stale event.
-          cache: "no-store",
-          signal: bounded,
-        });
-        bytes = await readLimited(response.body, MAX_RESPONSE_BYTES, bounded);
-      } catch (error) {
-        // The deadline and the caller's cancellation win the race in
-        // withDeadline; anything else is the network or a cut-off body.
-        if (bounded.aborted) throw bounded.reason;
-        // Next.js throws from a `no-store` fetch during static generation to
-        // make the page dynamic; wrapped, that signal fails the build instead.
-        if ((error as { digest?: unknown } | null)?.digest !== undefined)
-          throw error;
-        throw new FingerlyConnectionError(error);
-      }
-      if (!response.ok) throw this.toApiError(response, bytes);
-      if (bytes === null)
-        throw this.invalidResponse(response, "response_too_large");
-      try {
-        return JSON.parse(bytes.toString("utf8")) as T;
-      } catch {
-        throw this.invalidResponse(response, "invalid_response");
-      }
-    });
+    return withDeadline(
+      extra.timeoutMs ?? this.timeoutMs,
+      signal,
+      async (bounded) => {
+        let response: Response;
+        let bytes: Buffer | null;
+        try {
+          const headers: Record<string, string> = {
+            "x-api-key": this.#secretKey!,
+            accept: "application/json",
+            "user-agent": USER_AGENT,
+          };
+          if (payload !== undefined)
+            headers["content-type"] = "application/json";
+          // Read at call time: a client made at module scope predates a
+          // framework's fetch patch, and the framework must see `no-store` to
+          // treat this read as dynamic.
+          response = await (this.fetchImpl ?? fetch)(this.baseUrl + path, {
+            method,
+            headers,
+            ...(payload !== undefined ? { body: payload } : {}),
+            redirect: "manual",
+            // Frameworks that patch fetch (Next.js) otherwise serve a read from
+            // their cache, or freeze it into a build, as a stale event.
+            cache: "no-store",
+            signal: bounded,
+          });
+          if (extra.progress) extra.progress.responded = true;
+          bytes = await readLimited(response.body, MAX_RESPONSE_BYTES, bounded);
+        } catch (error) {
+          // The deadline and the caller's cancellation win the race in
+          // withDeadline; anything else is the network or a cut-off body.
+          if (bounded.aborted) throw bounded.reason;
+          // Next.js throws from a `no-store` fetch during static generation to
+          // make the page dynamic; wrapped, that signal fails the build instead.
+          if ((error as { digest?: unknown } | null)?.digest !== undefined)
+            throw error;
+          throw new FingerlyConnectionError(error);
+        }
+        if (!response.ok) throw this.toApiError(response, bytes);
+        if (bytes === null)
+          throw this.invalidResponse(response, "response_too_large");
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(bytes.toString("utf8"));
+        } catch {
+          throw this.invalidResponse(response, "invalid_response");
+        }
+        // Every answer the API sends is a JSON object. Anything else, or an
+        // object the caller's check refuses, would otherwise surface later
+        // as a TypeError in the code reading it.
+        if (!isObject(parsed) || (extra.accept && !extra.accept(parsed)))
+          throw this.invalidResponse(response, "invalid_response");
+        return parsed as T;
+      },
+    );
   }
 
   /**
@@ -295,6 +365,8 @@ export class APITransport {
     if (metadata.requestId === undefined && requestId)
       metadata.requestId = this.redact(requestId);
     metadata.retryAfter = parseRetryAfter(response.headers.get("retry-after"));
+    const scope = response.headers.get("fingerly-ratelimit-scope");
+    if (scope && /^[a-z_]{1,32}$/.test(scope)) metadata.rateLimitScope = scope;
     return metadata;
   }
 

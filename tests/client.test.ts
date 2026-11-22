@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { Fingerly, EventsClient, FingerlyProxy, load } from "../src/index.js";
 
@@ -27,7 +28,9 @@ describe("Fingerly class API", () => {
   it("keeps every read out of a framework's fetch cache", async () => {
     const client = new Fingerly({ secretKey });
     // A framework patches fetch after the module that made the client loaded.
-    const patched = vi.fn<typeof fetch>().mockResolvedValue(new Response("{}"));
+    const patched = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response('{"rows":[]}'));
     vi.stubGlobal("fetch", patched);
     try {
       await client.events.list();
@@ -103,7 +106,7 @@ describe("API version configuration", () => {
   it("uses the constructor version for every event request", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
-      .mockImplementation(async () => new Response("{}"));
+      .mockImplementation(async () => new Response('{"rows":[]}'));
     const client = new Fingerly({ secretKey, apiVersion: "v2", fetchImpl });
     await client.events.get("request-1");
     await client.events.list({ limit: 10 });
@@ -111,6 +114,26 @@ describe("API version configuration", () => {
       "https://api.fingerly.io/api/v2/events/request-1",
       "https://api.fingerly.io/api/v2/events?limit=10",
     ]);
+  });
+
+  it("names itself fingerly-node and its version on every call", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(
+        async () => new Response('{"rows":[],"rules_version":"r","items":[]}'),
+      );
+    const client = new Fingerly({ secretKey, fetchImpl });
+    await client.events.get("request-1");
+    await client.events.list();
+    await client.agents.sightings([]);
+    const { version } = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    ) as { version: string };
+    expect(
+      fetchImpl.mock.calls.map(
+        ([, init]) => (init?.headers as Record<string, string>)["user-agent"],
+      ),
+    ).toEqual(Array(3).fill(`fingerly-node/${version}`));
   });
 
   it.each(["", "1", "v0", "v1/../v2", "v2?key=value", "v2#fragment", "v2\n"])(

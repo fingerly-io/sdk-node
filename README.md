@@ -21,7 +21,7 @@
 
 ## What is this
 
-`@fingerly/node` is the server-side Node.js package for [Fingerly](https://fingerly.io), which identifies the device behind every web and app session and scores how suspicious it is. Use it to protect signups, logins and payments: read and verify the event a client SDK produced with a server-only secret key, spend iOS DeviceCheck bits, verify webhook signatures, and relay browser and native client SDK traffic from a path on your own site with a first-party proxy.
+`@fingerly/node` is the server-side Node.js package for [Fingerly](https://fingerly.io), which identifies the device behind every web and app session and scores how suspicious it is. Use it to protect signups, logins and payments: read and verify the event a client SDK produced with a server-only secret key, spend iOS DeviceCheck bits, verify webhook signatures, report the pages your server served so AI crawlers that never run JavaScript are seen, and relay browser and native client SDK traffic from a path on your own site with a first-party proxy.
 
 Node.js 18.16 or newer. No runtime dependencies.
 
@@ -32,7 +32,7 @@ Node.js 18.16 or newer. No runtime dependencies.
 **2. Install.**
 
 ```sh
-npm install @fingerly/node@^0.4.1
+npm install @fingerly/node@^0.5.0
 ```
 
 **3. Read an event.**
@@ -68,6 +68,7 @@ Full documentation: [docs.fingerly.io/docs/sdks/node](https://docs.fingerly.io/d
 | Run a once-per-device check on iOS | [DeviceCheck bits on iOS](#devicecheck-bits-on-ios) |
 | Check a webhook signature | [Verify webhooks](#verify-webhooks) |
 | Keep identification working behind content blockers | [First-party proxy](#first-party-proxy) |
+| See AI crawlers that never run JavaScript | [Agent sightings](#agent-sightings) |
 | Mount the proxy in Next.js, Express, NestJS, Fastify, Koa or Hono | [Frameworks](#frameworks) |
 
 ## Contents
@@ -77,6 +78,7 @@ Full documentation: [docs.fingerly.io/docs/sdks/node](https://docs.fingerly.io/d
 - [DeviceCheck bits on iOS](#devicecheck-bits-on-ios)
 - [Verify webhooks](#verify-webhooks)
 - [First-party proxy](#first-party-proxy)
+- [Agent sightings](#agent-sightings)
 - [Frameworks](#frameworks)
 - [Development](#development)
 - [Requirements](#requirements)
@@ -99,7 +101,19 @@ A 404 from `get` carries one of two codes:
 
 The archived `document` (`EventDocument | null`, including platform-neutral `attestation: Attestation` and `risk.triggers`) arrives moments after the event: check `has_document` rather than assuming. `EventTrigger.signal` is typed as `SignalName`, including the `v: 3` anti-spoofing and integrity signals `"attestation_failed"`, `"attestation_downgrade"`, `"device_inconsistent"`, `"report_incomplete"`, `"probe_errors"`, `"fetch_metadata_missing"`, `"web_ticket_missing"`, `"web_ticket_invalid"`, `"tampering"`, `"custom_root_ca"` and `"secondary_user_profile"`. Event `triggers` carry signal groups, such as `vpn`; `document.risk.triggers` carry the raw signals behind them, such as `vpn_public`. A native `attestation` also carries `attest_skipped` (the app's reason for sending no proof) and `downgrade` (the report named an install an attested device owns).
 
-Every closed set of values has a runtime constant with a same-named type: `Signal`, `SuspectLevel`, `Confidence`, `EventState`, `Platform`, `Environment`, `AnonymityNetwork`, `DeviceKind`, `VisitorKind`, `AttestationState`, `AttestationStatus`, `AttestSkippedReason`, `VerifyReason`, `DeviceCheckErrorCode`, `WebhookEventType` and `ProxyFailureKind`. A member is its value in PascalCase, word by word (`Signal.FingerprintSuppressed` is `"fingerprint_suppressed"`). Fields the server fills are typed open, such as `SuspectLevel | (string & {})`, so comparing with the constant or with the string both compile, and a value a newer server adds still reaches your code.
+`event.visitor_kind` says what sort of client made the request (`VisitorKind`). When it is `VisitorKind.AiBot`, `event.ai` (`AIAgent`) names the agent: `name` and `provider` (open strings, such as `ChatGPT-User` and `OpenAI`), `purpose` (`AIPurpose`), `runtime` (`AIRuntime`), `declared`, and `verification` with `method` (`AIVerificationMethod`) and `result` (`AIVerificationResult`). On every other event `ai` is absent. The agent is named by a Web Bot Auth signature when the request carried one, otherwise by its user agent. `verification` says how far that was checked: `AIVerificationMethod.Signature` (the operator's published key signed the request) or `AIVerificationMethod.IpList` (the address is inside the operator's published ranges), with result `AIVerificationResult.Pass`, `AIVerificationResult.Fail` (the name was borrowed), or `AIVerificationResult.NotAttempted` with method `AIVerificationMethod.None` (the operator publishes nothing to check against, or it could not be checked; the name is then only the client's claim). Only clients that run the browser SDK produce events, so a crawler that does not run JavaScript never appears. `list` narrows by `kind`, `aiProvider` (exact and case sensitive, as events name it) and `aiPurpose`, next to `visitor` and `level`:
+
+```ts
+import { AIPurpose, VisitorKind } from "@fingerly/node";
+
+const page = await fingerly.events.list({
+  kind: VisitorKind.AiBot,
+  aiPurpose: AIPurpose.UserFetch,
+});
+for (const event of page.rows) console.log(event.ai?.provider, event.ai?.name);
+```
+
+Every closed set of values has a runtime constant with a same-named type: `Signal`, `SuspectLevel`, `Confidence`, `EventState`, `Platform`, `Environment`, `AnonymityNetwork`, `DeviceKind`, `VisitorKind`, `AIPurpose`, `AIRuntime`, `AIVerificationMethod`, `AIVerificationResult`, `AttestationState`, `AttestationStatus`, `AttestSkippedReason`, `VerifyReason`, `DeviceCheckErrorCode`, `WebhookEventType` and `ProxyFailureKind`. A member is its value in PascalCase, word by word (`Signal.FingerprintSuppressed` is `"fingerprint_suppressed"`). Fields the server fills are typed open, such as `SuspectLevel | (string & {})`, so comparing with the constant or with the string both compile, and a value a newer server adds still reaches your code.
 
 ```ts
 import { Signal, SuspectLevel } from "@fingerly/node";
@@ -118,7 +132,7 @@ if (signals.includes(Signal.FingerprintSuppressed)) {
 
 | Error | When | Carries |
 | --- | --- | --- |
-| `FingerlyAPIError` | any non-2xx answer, redirects included, or a 2xx that is not JSON or exceeds 4 MiB (`code` `invalid_response` or `response_too_large`) | `status`, `code`, `details`, `requestId`, `retryAfter` (seconds, or `null`) |
+| `FingerlyAPIError` | any non-2xx answer, redirects included, or a 2xx that exceeds 4 MiB (`code` `response_too_large`) or is not the JSON object the API sends (`code` `invalid_response`, for example an event whose `ai` lacks a field `AIAgent` declares) | `status`, `code`, `details`, `requestId`, `retryAfter` (seconds, or `null`), `rateLimitScope` (which limit refused a `429`, such as `daily`, or `null`) |
 | `FingerlyTimeoutError` | the deadline passed | |
 | `FingerlyConnectionError` | the API could not be reached or the connection dropped mid-response; `FingerlyTimeoutError` is a kind of it | `cause` |
 
@@ -182,28 +196,27 @@ if (!ok) {
 
 ## DeviceCheck bits on iOS
 
-When DeviceCheck is turned on for your project's Apple key, an iOS identification holds an Apple DeviceCheck token for one hour. The token pays for exactly one Apple call: `fingerly.deviceCheck.query` reads the device's two bits, `fingerly.deviceCheck.write` sets them, never both. Apple treats a token as single-use, so a "check, then mark" flow such as a once-per-device free trial spends two identifications:
+When DeviceCheck is turned on for your project's Apple key, an iOS identification holds two Apple DeviceCheck tokens for one hour: a read token and a write token. `fingerly.deviceCheck.query` spends the read token to read the device's two bits, `fingerly.deviceCheck.write` spends the write token to set them, and each pays for one Apple call. Apple treats a token as single-use, so one identification supports one read and one write, and a "check, then mark" flow such as a once-per-device free trial does both with the same request ID:
 
 1. On the identification that asks for the trial, query the bits.
 2. If they say the device had one, refuse. Otherwise grant the trial and record
    the grant in your own data; until the bit is written, that record is what
    stops a second trial.
-3. On the next identification from that install, write the bit.
+3. Write the bit with the same request ID.
 
 ```ts
 // bit0 means "this device has had a free trial". The meaning is yours.
-const bits = await fingerly.deviceCheck.query(trialRequestId);
+const bits = await fingerly.deviceCheck.query(requestId);
 if (bits.found && bits.bit0) return "offer-paid-plan";
 await trials.grant({ accountId, deviceMarked: false });
 
-// Later, with the request ID of the app's next identification:
-await fingerly.deviceCheck.write(markRequestId, { bit0: true });
+await fingerly.deviceCheck.write(requestId, { bit0: true });
 await trials.update(accountId, { deviceMarked: true });
 ```
 
 Errors are `FingerlyAPIError` with a `DeviceCheckErrorCode` in `code` (compare with the `DeviceCheckErrorCode` constant, such as `DeviceCheckErrorCode.DeviceCheckNotHeld`): `device_check_not_held` (404, no token: decide without the bits), `device_check_spent`, `device_check_busy`, `credential_unavailable` (409), `bits_required`, `apple_rejected` (422, Apple's HTTP status in `appleStatus`) and `device_check_unavailable` (503). A write naming no bit is refused with a `TypeError` before anything is sent.
 
-After a `503` or a transport failure the SDK resends the identical request, twice at most. A token kept after such an answer accepts only the request it was first used for: retry with the same method and bits, or the API answers `device_check_spent`.
+After a `503` or a transport failure the SDK resends the identical request, twice at most. A token kept after such an answer accepts only the request it was first used for: retry with the same method and bits. A second read, or a write with other bits, on that event answers `device_check_spent`.
 
 ## Verify webhooks
 
@@ -243,8 +256,9 @@ Client SDKs send a single `POST` identification envelope to that path, and the p
    `X-Fingerly-Origin` from `Host`, `Referer` or the request URL.
 4. Forwards `X-Api-Key`, `Content-Type`, `User-Agent`, `Idempotency-Key`,
    `Sec-Fetch-*` (`Sec-Fetch-Site`, `Sec-Fetch-Mode`, `Sec-Fetch-Dest`),
-   `Sec-CH-UA-*` (`Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`) and
-   `X-Fingerly-Host`.
+   `Sec-CH-UA-*` (`Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`), the
+   Web Bot Auth `Signature`, `Signature-Input` and `Signature-Agent` (each
+   dropped when over 4096 bytes) and `X-Fingerly-Host`.
 
 The upstream is checked when the proxy is created and answers are checked before they are relayed:
 
@@ -270,7 +284,7 @@ The handler never throws, so your framework never turns an outage into a 500 wit
 
 When the visitor disconnects, the upstream call is cancelled and nothing is logged. The proxy key, like the secret key, is checked on the first request, so a build without secrets can load the route module.
 
-The proxy reports itself upstream as `node/0.4.1`, which the dashboard shows per proxy.
+The proxy reports itself upstream as `node/0.5.0`, which the dashboard shows per proxy.
 
 <details>
 <summary>Proxy options</summary>
@@ -294,6 +308,90 @@ The proxy reports itself upstream as `node/0.4.1`, which the dashboard shows per
 ### The visitor's address
 
 `clientIp(request, peer)` must return exactly one IPv4 or IPv6 address. Take it from the header your CDN or load balancer sets, and otherwise from `peer.remoteAddress`, the TCP peer, where the server exposes it (the Node handler below does; a Fetch route handler cannot). Trust that header only when traffic can reach your app solely through that CDN or load balancer, since anyone else can send it. `null`, an empty string, a comma-separated list or anything else is a configuration error: the request is answered 500 without calling upstream.
+
+## Agent sightings
+
+Most AI crawlers and fetchers (GPTBot, ClaudeBot and the like) read your pages without running their JavaScript, so the browser SDK never sees them. The agent sightings reporter sees them from your server instead: after each page your server serves, it reports the request to Fingerly as raw input, and Fingerly answers what sent it. The answers appear in the dashboard's AI traffic view and, through `lookup`, in your own code. The reporter decides nothing about a visitor itself: it holds no list of agents or addresses and never filters by user agent.
+
+```ts
+import { AIVerificationResult, AgentSightings, Fingerly } from "@fingerly/node";
+import express from "express";
+
+const sightings = Fingerly.createAgentSightings({
+  secretKey: process.env.FINGERLY_SECRET_KEY,
+  // The same callback contract as the proxy: see "The visitor's address".
+  clientIp: (request, peer) =>
+    request.headers.get("x-real-ip") ?? peer.remoteAddress ?? "",
+});
+
+const app = express();
+app.use(sightings.handleNode); // before your routes
+
+app.get("/pricing", (req, res) => {
+  const answer = sightings.lookupNode(req);
+  if (answer === AgentSightings.Unknown) {
+    // Nothing known yet: serve as usual.
+  } else if (answer.ai?.verification.result === AIVerificationResult.Fail) {
+    // The request claims to be an AI agent its operator does not stand behind.
+  }
+  res.send(renderPricing());
+});
+```
+
+`handleNode` is `(req, res, next?)` middleware for Express, NestJS and `node:http` (call it at the start of a plain `node:http` handler without `next`). It calls `next` at once and reports the request when its response has finished, so it never delays a response. On a Fetch runtime, call `sightings.report(request, response, peer?)` once you have the response, and `sightings.lookup(request, peer?)` in place of `lookupNode`.
+
+**What is reported.** Every response with a `Content-Type` of `text/html` or `application/xhtml+xml`, and every request for `/robots.txt`, `/llms.txt` or `/llms-full.txt`, whatever the status. `includePaths` adds path prefixes reported whatever their content type, `excludePaths` removes path prefixes (the three files included), and `contentTypes` replaces the media types. Static assets, API routes and health checks are not reported unless you include them.
+
+**What is sent.** The `User-Agent` (a request whose user agent is over 4096 bytes is not reported), the address `clientIp` returned (a request without one is not reported), `Host`, the method, the Web Bot Auth `Signature`, `Signature-Input` and `Signature-Agent` headers when present (each left out when over 4096 bytes), and how many times the same request was seen. Never the path, the query string, cookies, `Authorization`, any other header, the body or the response. None of these fields is ever logged.
+
+**How `lookup` answers.** From memory only: it never waits on the network and never throws. It returns the answer Fingerly gave for the same user agent, address and `Signature-Agent` (`visitor_kind`, `agent`, and `ai` for an AI agent, as on events), or `AgentSightings.Unknown` when there is none yet or it expired. Treat `Unknown` as "serve as usual". A signed request is checked every time, so it is never remembered and always `Unknown` to `lookup`. `lookup` needs `clientIp` to return the address directly; when it returns a promise, `lookup` answers `Unknown` (reports still wait for it).
+
+**Memory.** Answers live in a least-recently-used cache of 4096 entries by default (about 1.5 MB), set with `cacheSize`, never more than 65536 (about 25 MB). Each answer is kept for the time Fingerly said, and all of them are dropped when Fingerly's rules change. At most 1000 requests wait to be reported; past that, new requests are not reported and `sightings.dropped` counts them, while requests already waiting keep counting.
+
+**Reporting.** Repeats of a request are folded into one item with a count, cache hits included, except signed requests, which are each their own item. A background timer, which never keeps the process alive, sends up to 200 requests at a time once 200 are waiting, once they reach 64 KiB, or 2 seconds after the oldest, one report at a time, each with a 5 second deadline. Everything fails open: requests keep being served and `lookup` keeps answering whatever the API does.
+
+| API answer | What the reporter does |
+| --- | --- |
+| `200` | Remembers each answer for its `ttl`. A request Fingerly could not use is answered `VisitorKind.Unknown` with `ttl` 0, so it is never remembered and stays `Unknown` to `lookup`; the others are answered as usual. |
+| `429` | Keeps the requests and waits for `Retry-After` (`daily` scope: until the next UTC day) before reporting again, at least 1 second and at most 24 hours. |
+| `503`, or the API could not be reached | Keeps the requests and retries after 1 second, doubling up to 60 seconds. |
+| `401` / `403` | Drops the requests, pauses for 60 seconds and logs: the key is wrong or revoked. |
+| `422` (no request in the report was usable), any other status, or a `200` it cannot read | Drops the requests and logs. |
+| No answer within the deadline | Drops the requests: Fingerly may have counted them already. |
+
+Problems go to `console.error`, at most once a minute each, or to `onError` with a `ProxyFailureKind`, and never carry a reported field.
+
+**Shutting down.** The background timer never keeps the process alive, so requests still waiting when the process exits are lost unless `close()` sends them first. Node exits at once on `SIGTERM` unless you handle it, so stop the server, then close the reporter:
+
+```ts
+const server = app.listen(8080);
+
+process.once("SIGTERM", async () => {
+  server.close();
+  await sightings.close();
+  process.exit(0);
+});
+```
+
+`close()` stops the timer, sends what is waiting in reports of up to 200, each with its 5 second deadline, stops at the first report that fails or while the API asked to wait, and never rejects. Calling it again returns the same promise; after it, reports are ignored and `lookup` keeps answering. Under `node:cluster` a worker exits at once when the primary does, so forward the signal from the primary to each worker (`worker.process.kill("SIGTERM")`) and let each worker close its own reporter. `sightings.flush()` sends everything waiting now without closing. On serverless and edge runtimes, where nothing runs after the invocation ends, call `flush()` before it does, for example `waitUntil(sightings.flush())`.
+
+`fingerly.agents.sightings(items)` is the call underneath: one `POST /api/v1/agents/sightings` with up to 200 items, answered in the same order. It throws `FingerlyAPIError` like the event reads; a `429` carries `retryAfter` and `rateLimitScope`.
+
+<details>
+<summary>Agent sightings options</summary>
+
+| Option | Meaning |
+| --- | --- |
+| `secretKey` | The secret key. Checked on the first report, so it may be unset while a build loads the module. |
+| `clientIp(request, peer)` | Returns the visitor's address. See [The visitor's address](#the-visitors-address). |
+| `cacheSize` | Answers remembered. 4096 by default, at most 65536. |
+| `contentTypes` | Response media types reported. `text/html` and `application/xhtml+xml` by default. |
+| `includePaths` | Path prefixes reported whatever their content type. |
+| `excludePaths` | Path prefixes never reported. |
+| `onError` | Receives one concise line per problem, for your own logger. |
+| `endpoint`, `apiVersion`, `allowInsecureLoopback`, `fetchImpl` | As for the client. |
+
+</details>
 
 ## Frameworks
 

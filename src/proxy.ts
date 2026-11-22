@@ -6,10 +6,12 @@ import {
   normalizeOrigin,
   parseKey,
   positiveInt,
+  SDK_VERSION,
 } from "./config.js";
 import type { KeyScope } from "./config.js";
 import { MAX_RESPONSE_BYTES, readLimited } from "./body.js";
 import { withDeadline } from "./deadline.js";
+import { callHook } from "./decode.js";
 import { FingerlyTimeoutError } from "./errors.js";
 import { REDACTED, inspectCustom } from "./redact.js";
 import { serveNode } from "./node.js";
@@ -26,7 +28,7 @@ const DEFAULT_MAX_BODY_BYTES = 1_048_576;
 const DEFAULT_TIMEOUT_MS = 5_000;
 
 /** What this proxy reports itself as upstream; shown per proxy in the dashboard. */
-const PROXY_VERSION = "node/0.4.1";
+const PROXY_VERSION = `node/${SDK_VERSION}`;
 
 /** Statuses that must not carry a body. */
 const BODILESS_STATUSES = new Set([204, 205, 304]);
@@ -59,6 +61,14 @@ const CLIENT_METADATA_HEADERS = [
   "sec-ch-ua-mobile",
   "sec-ch-ua-platform",
 ];
+
+/**
+ * Web Bot Auth headers an AI agent's browser signs the request with,
+ * forwarded when present and at most 4096 bytes. The API ignores a longer
+ * one, so it is dropped here rather than refused.
+ */
+const SIGNATURE_HEADERS = ["signature", "signature-input", "signature-agent"];
+const MAX_SIGNATURE_HEADER_BYTES = 4096;
 
 const CORS_ALLOW_HEADERS =
   "content-type, x-api-key, idempotency-key, x-fingerly-sdk-platform";
@@ -348,11 +358,8 @@ export class FingerlyProxy {
   /** One concise line per failure: the hook if given, else the console. */
   private report(failure: ProxyFailure): void {
     if (this.onError) {
-      try {
-        this.onError(failure);
-      } catch {
-        // A logging hook must not turn a 502 into a crash.
-      }
+      // A logging hook must not turn a 502 into a crash.
+      callHook(this.onError, failure);
       return;
     }
     console.error(`Fingerly proxy: ${failure.message}`);
@@ -464,6 +471,12 @@ export class FingerlyProxy {
     for (const name of CLIENT_METADATA_HEADERS) {
       const value = request.headers.get(name);
       if (value) headers.set(name, value);
+    }
+    for (const name of SIGNATURE_HEADERS) {
+      const value = request.headers.get(name);
+      // Header values are byte strings: one character per byte.
+      if (value && value.length <= MAX_SIGNATURE_HEADER_BYTES)
+        headers.set(name, value);
     }
     return headers;
   }

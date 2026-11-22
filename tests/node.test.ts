@@ -1,4 +1,5 @@
 import http from "node:http";
+import http2 from "node:http2";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createNodeProxy } from "../src/index.js";
@@ -274,5 +275,48 @@ describe("Node handler", () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     hang = false;
     expect(upstreamClosed).toBe(1);
+  });
+
+  it("forwards the host of an HTTP/2 request, which arrives as :authority", async () => {
+    seen.length = 0;
+    const handler = createNodeProxy({
+      proxyKey: "fly_px_development_test",
+      upstream: `http://127.0.0.1:${(upstream.address() as AddressInfo).port}`,
+      allowInsecureLoopback: true,
+      path: "/k7x2qm4a",
+      clientIp: () => "127.0.0.1",
+      onError: () => {},
+    });
+    const server = http2.createServer((req, res) => void handler(req, res));
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const session = http2.connect(
+      `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    );
+    try {
+      const status = await new Promise<number>((resolve, reject) => {
+        const stream = session.request({
+          ":method": "POST",
+          ":path": "/k7x2qm4a",
+          ":authority": "shop.test",
+          "content-type": "application/json",
+          "x-api-key": "fly_pk_development_test",
+          origin: "https://shop.test",
+          signature: "sig1=:AAAA:",
+          "signature-input": 'sig1=("@authority");tag="web-bot-auth"',
+        });
+        stream.on("response", (headers) => resolve(headers[":status"]!));
+        stream.on("error", reject);
+        stream.resume();
+        stream.end("{}");
+      });
+      expect(status).toBe(200);
+      expect(seen[0]?.headers["x-fingerly-host"]).toBe("shop.test");
+      expect(seen[0]?.headers["signature"]).toBe("sig1=:AAAA:");
+    } finally {
+      session.close();
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });

@@ -1,9 +1,12 @@
+import { AgentsClient } from "./agents.js";
 import { DeviceCheckClient } from "./device-check.js";
 import { EventsClient } from "./events.js";
 import { FingerlyProxy } from "./proxy.js";
+import { AgentSightings } from "./sightings.js";
 import { APITransport } from "./transport.js";
 import { verifyWebhook } from "./webhooks.js";
 import type {
+  AgentSightingsOptions,
   FingerlyOptions,
   ProxyOptions,
   VerifyWebhookOptions,
@@ -26,6 +29,8 @@ export class Fingerly {
   readonly events: EventsClient;
   /** Apple DeviceCheck bits of an iOS event's device, under the same key. */
   readonly deviceCheck: DeviceCheckClient;
+  /** Reports of the requests your server served, under the same key. */
+  readonly agents: AgentsClient;
 
   /**
    * @param options Secret key, plus optional endpoint, version and deadline.
@@ -35,6 +40,17 @@ export class Fingerly {
     const transport = new APITransport(options);
     this.events = new EventsClient(transport);
     this.deviceCheck = new DeviceCheckClient(transport);
+    this.agents = new AgentsClient(transport);
+  }
+
+  /**
+   * Creates the agent sightings reporter: reports the requests your server
+   * served in the background and answers `lookup` from memory.
+   *
+   * @param options Secret key and the callback resolving the visitor's IP.
+   */
+  static createAgentSightings(options: AgentSightingsOptions): AgentSightings {
+    return new AgentSightings(options);
   }
 
   /**

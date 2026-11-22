@@ -78,6 +78,11 @@ export interface APIErrorMetadata {
    * response did not say. Reads are never retried automatically.
    */
   retryAfter?: number | null;
+  /**
+   * Which limit refused a `429`, from `Fingerly-RateLimit-Scope`, such as
+   * `daily` for an organisation's daily allowance; null when not sent.
+   */
+  rateLimitScope?: string | null;
 }
 
 /**
@@ -97,6 +102,8 @@ export class FingerlyAPIError extends Error {
   readonly requestId?: string;
   /** Seconds to wait before retrying, from `Retry-After`, or null. */
   readonly retryAfter: number | null;
+  /** Which limit refused a `429`, such as `daily`, or null. */
+  readonly rateLimitScope: string | null;
 
   /**
    * @param message Human-readable summary.
@@ -114,6 +121,7 @@ export class FingerlyAPIError extends Error {
     if (metadata.details !== undefined) this.details = metadata.details;
     if (metadata.requestId !== undefined) this.requestId = metadata.requestId;
     this.retryAfter = metadata.retryAfter ?? null;
+    this.rateLimitScope = metadata.rateLimitScope ?? null;
   }
 
   /**

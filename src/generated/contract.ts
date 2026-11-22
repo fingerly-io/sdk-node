@@ -1,4 +1,28 @@
 export interface paths {
+    "/api/v1/agents/sightings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report the requests your server served
+         * @description Reports up to 200 requests your server served, as raw input, and answers what sent each one: `visitor_kind`, the agent's name and, for an AI agent, the `ai` object with how its claim was checked. AI crawlers and fetchers that never run a page's JavaScript are seen only this way.
+         *
+         *     Free, and never part of the identification count. Each answer carries a `ttl`: the seconds it may be reused for the exact same user agent, address and Signature-Agent, so a server SDK reports a repeat request as a `count` on its next call rather than asking again. A signed request has a `ttl` of 0. When `rules_version` changes, drop every remembered answer.
+         *
+         *     Calls are limited per key and per server address, and items per organization per day; a refused call answers `429` with `Retry-After` and `Fingerly-RateLimit-Scope`, and a server SDK then treats its requests as unchecked and serves them as usual.
+         */
+        post: operations["reportRequestsYourServerServed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/attestation/challenge": {
         parameters: {
             query?: never;
@@ -872,6 +896,85 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AIAgentOut: {
+            /** @description True when the agent named itself, in its user agent or a signature */
+            declared: boolean;
+            /** @description The agent as its operator names it, such as GPTBot or Claude-User */
+            name: string;
+            /** @description The company that operates the agent, such as OpenAI, Anthropic or Google */
+            provider: string;
+            /**
+             * @description What the operator says the traffic is for: training (collecting content to train models), search (indexing for an AI answer or search product), user_fetch (reading a page a person asked an assistant to read) or agent (driving a browser on a person's behalf). New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            purpose: "training" | "search" | "user_fetch" | "agent";
+            /**
+             * @description Where the agent runs: provider_cloud (the operator's own infrastructure), hosted_browser (a third party's cloud browser) or user_device (a person's own browser). New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            runtime: "provider_cloud" | "hosted_browser" | "user_device";
+            /** @description How the agent's claimed identity was checked, and what that found */
+            verification: components["schemas"]["AIVerificationOut"];
+        };
+        AIVerificationOut: {
+            /**
+             * @description signature (a signed request), ip_list (the operator's published address ranges), reverse_dns (a reverse lookup confirmed forward) or none. New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            method: "signature" | "ip_list" | "reverse_dns" | "none";
+            /**
+             * @description pass (the claim held), fail (it was checked and did not hold) or not_attempted. New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            result: "pass" | "fail" | "not_attempted";
+        };
+        AgentSightingIn: {
+            /** @description The client's address from the server's trusted socket or edge header: one IPv4 or IPv6 literal, never a forwarded list */
+            client_ip: string;
+            /**
+             * Format: int64
+             * @description How many times this exact request was served since the last report, this one included; 1 when absent, at most 1000000
+             */
+            count?: number;
+            /** @description The Host the request was sent to, which a signing agent signs. At most 4096 bytes */
+            host?: string;
+            /** @description The request method; GET when absent. At most 4096 bytes */
+            method?: string;
+            /** @description The Signature header, when the request had one. At most 4096 bytes */
+            signature?: string;
+            /** @description The Signature-Agent header, when the request had one. At most 4096 bytes */
+            signature_agent?: string;
+            /** @description The Signature-Input header, when the request had one. At most 4096 bytes */
+            signature_input?: string;
+            /** @description The request's User-Agent header, as received; empty when it had none. At most 4096 bytes */
+            user_agent: string;
+        };
+        AgentSightingOut: {
+            /** @description The agent's name where the server knows it, such as GPTBot or Googlebot. Absent for a person's browser */
+            agent?: string;
+            /** @description Present when visitor_kind is ai_bot: who operates the agent, what its traffic is for, and how far its claim was checked */
+            ai?: components["schemas"]["AIAgentOut"] | null;
+            /**
+             * Format: int64
+             * @description Seconds this answer may be reused for the exact same user agent, address and Signature-Agent; 0 for a signed request, which is checked every time, and for a request the server could not use
+             */
+            ttl: number;
+            /**
+             * @description human, ai_bot, automation or search_crawler; unknown for a request the server could not use (a field over its limit, an address that is not one literal, or a count over 1000000), which is neither classified nor counted. New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            visitor_kind: "human" | "ai_bot" | "automation" | "search_crawler" | "unknown";
+        };
+        AgentSightingsIn: {
+            /** @description The requests, at most 200. Each is answered in the same position of the answer's items */
+            items?: components["schemas"]["AgentSightingIn"][];
+        };
+        AgentSightingsOut: {
+            /** @description One answer per reported request, in the same order */
+            items: components["schemas"]["AgentSightingOut"][];
+            /** @description Names the classification rules; when it changes, drop every remembered answer */
+            rules_version: string;
+        };
         AttestEnvelope: {
             /** @description Base64 CBOR App Attest assertion object */
             assertion?: string;
@@ -996,6 +1099,8 @@ export interface components {
         EventRowOut: {
             agent?: string;
             agent_version?: string;
+            /** @description Present when visitor_kind is ai_bot: who operates the agent, what its traffic is for, and how far its claim was checked */
+            ai?: components["schemas"]["AIAgentOut"] | null;
             /**
              * @description New values can be added within API v1, so accept values not listed here.
              * @enum {string}
@@ -1066,7 +1171,7 @@ export interface components {
              * @description New values can be added within API v1, so accept values not listed here.
              * @enum {string}
              */
-            signal: "tor" | "ios_simulator" | "mitm_attack" | "frida_detected" | "virtual_machine" | "remote_control" | "datacenter_proxy" | "ip_blocklist" | "rooted_device" | "jailbroken_device" | "android_emulator" | "cloned_app" | "browser_tampering" | "fingerprint_suppressed" | "developer_tools" | "device_farm" | "bot" | "ip_reputation" | "residential_proxy" | "privacy_settings" | "embedded_web_view" | "high_activity" | "location_spoofing" | "vpn" | "incognito_mode" | "active_call" | "attestation_missing" | "attestation_failed" | "device_inconsistent" | "report_incomplete" | "custom_root_ca" | "secondary_user_profile" | "network_anomaly";
+            signal: "tor" | "ios_simulator" | "mitm_attack" | "frida_detected" | "virtual_machine" | "remote_control" | "datacenter_proxy" | "ip_blocklist" | "rooted_device" | "jailbroken_device" | "android_emulator" | "cloned_app" | "browser_tampering" | "fingerprint_suppressed" | "identity_obfuscated" | "developer_tools" | "device_farm" | "bot" | "ip_reputation" | "residential_proxy" | "privacy_settings" | "embedded_web_view" | "high_activity" | "location_spoofing" | "vpn" | "incognito_mode" | "active_call" | "attestation_missing" | "attestation_failed" | "device_inconsistent" | "report_incomplete" | "custom_root_ca" | "secondary_user_profile" | "network_anomaly";
             /** Format: int32 */
             weight: number;
         };
@@ -1105,10 +1210,14 @@ export interface components {
              * @enum {string}
              */
             consent?: "granted";
+            /** @description Web only: session asks for next_seal with an identified answer, which the page keeps for the life of its tab and sends back as seal. Omitted, no seal is issued and the page keeps nothing */
+            continuity?: string;
             /** @description Empty for a report. ticket asks for a web freshness ticket instead: a public key on the web only, with a body of v, op and sdk, answered 200 with ticket and expires_at, never charged */
             op?: string;
             /** @description Which SDK collected these signals */
             sdk?: components["schemas"]["SDKInfo"];
+            /** @description Web only, with continuity session: the next_seal of the previous answer in this tab. Bound to the project, the page origin and the browser's profile, valid for 30 minutes and renewed by each answer for at most 12 hours. One that does not verify is ignored */
+            seal?: string;
             /** @description The platform-specific signals the SDK collected */
             signals?: {
                 [key: string]: unknown;
@@ -1126,6 +1235,8 @@ export interface components {
             v?: number;
         };
         IdentifyOut: {
+            /** @description Present when visitor_kind is ai_bot: who operates the agent, what its traffic is for, and how far its claim was checked. Only answered to a secret key called directly */
+            ai?: components["schemas"]["AIAgentOut"] | null;
             /** @description Native only, present whenever attest was sent: the key_id the server evaluated, copied from attest.key_id */
             attest_key_id?: string;
             /**
@@ -1139,6 +1250,8 @@ export interface components {
             identifiable: boolean;
             /** @description Fresh attestation challenge ticket and dynamic offer flags for the next native submission */
             next_attestation?: components["schemas"]["AttestationChallengeOut"] | null;
+            /** @description Web only, when the report asked for continuity session and a private window was identified: the session seal to send as seal on the next report from this tab */
+            next_seal?: components["schemas"]["WebSealOut"] | null;
             /** @description Web only: a fresh freshness ticket for the next report from this page, so it needs no ticket request */
             next_ticket?: components["schemas"]["WebTicketOut"] | null;
             /** @description Why enrichment did not happen. Only answered to a secret key; a browser or app reads it on the server-side event read */
@@ -1171,6 +1284,11 @@ export interface components {
             visitor_id: string;
             /** @description Whether this is the first time this visitor has been seen */
             visitor_is_new: boolean;
+            /**
+             * @description human, ai_bot, automation or search_crawler. Only answered to a secret key called directly; everyone else reads it on the server-side event read, webhooks and the dashboard. New values can be added within API v1, so accept values not listed here.
+             * @enum {string}
+             */
+            visitor_kind?: "human" | "ai_bot" | "automation" | "search_crawler";
         };
         IdentifyTriggerOut: {
             /**
@@ -1182,12 +1300,12 @@ export interface components {
              * @description New values can be added within API v1, so accept values not listed here.
              * @enum {string}
              */
-            group?: "tor" | "ios_simulator" | "mitm_attack" | "frida_detected" | "virtual_machine" | "remote_control" | "datacenter_proxy" | "ip_blocklist" | "rooted_device" | "jailbroken_device" | "android_emulator" | "cloned_app" | "browser_tampering" | "fingerprint_suppressed" | "developer_tools" | "device_farm" | "bot" | "ip_reputation" | "residential_proxy" | "privacy_settings" | "embedded_web_view" | "high_activity" | "location_spoofing" | "vpn" | "incognito_mode" | "active_call" | "attestation_missing" | "attestation_failed" | "device_inconsistent" | "report_incomplete" | "custom_root_ca" | "secondary_user_profile" | "network_anomaly";
+            group?: "tor" | "ios_simulator" | "mitm_attack" | "frida_detected" | "virtual_machine" | "remote_control" | "datacenter_proxy" | "ip_blocklist" | "rooted_device" | "jailbroken_device" | "android_emulator" | "cloned_app" | "browser_tampering" | "fingerprint_suppressed" | "identity_obfuscated" | "developer_tools" | "device_farm" | "bot" | "ip_reputation" | "residential_proxy" | "privacy_settings" | "embedded_web_view" | "high_activity" | "location_spoofing" | "vpn" | "incognito_mode" | "active_call" | "attestation_missing" | "attestation_failed" | "device_inconsistent" | "report_incomplete" | "custom_root_ca" | "secondary_user_profile" | "network_anomaly";
             /**
              * @description New values can be added within API v1, so accept values not listed here.
              * @enum {string}
              */
-            signal: "incognito" | "tampering" | "antidetect_browser" | "automation" | "fetch_metadata_missing" | "web_ticket_missing" | "web_ticket_invalid" | "bad_bot" | "device_farm" | "high_activity" | "virtual_machine" | "fingerprint_suppressed" | "embedded_web_view" | "privacy_settings" | "remote_control" | "developer_tools" | "geo_mismatch" | "device_inconsistent" | "report_incomplete" | "vpn_public" | "vpn_timezone" | "vpn_os_mismatch" | "vpn_relay" | "vpn_low_confidence" | "vpn_medium_confidence" | "vpn_high_confidence" | "tor" | "proxy" | "residential_proxy" | "residential_proxy_low_confidence" | "residential_proxy_medium_confidence" | "residential_proxy_high_confidence" | "ip_blocklist_email_spam" | "ip_blocklist_attack_source" | "ip_abuser" | "datacenter_ip" | "bogon_ip" | "anycast_ip" | "emulator" | "root_apps" | "app_cloner" | "play_device_integrity_failed" | "play_app_unrecognized" | "device_activity_high" | "device_activity_very_high" | "frida" | "mitm_attack" | "active_call" | "attestation_failed" | "attestation_missing" | "attestation_downgrade" | "probe_errors" | "custom_root_ca" | "secondary_user_profile" | "vpn_mobile" | "jailbreak" | "simulator" | "repeated_reinstall";
+            signal: "incognito" | "tampering" | "antidetect_browser" | "automation" | "fetch_metadata_missing" | "web_ticket_missing" | "web_ticket_invalid" | "bad_bot" | "ai_spoofed" | "device_farm" | "high_activity" | "virtual_machine" | "fingerprint_suppressed" | "identity_obfuscated" | "embedded_web_view" | "privacy_settings" | "remote_control" | "developer_tools" | "geo_mismatch" | "device_inconsistent" | "report_incomplete" | "vpn_public" | "vpn_os_mismatch" | "vpn_relay" | "vpn_low_confidence" | "vpn_medium_confidence" | "vpn_high_confidence" | "tor" | "proxy" | "residential_proxy" | "residential_proxy_low_confidence" | "residential_proxy_medium_confidence" | "residential_proxy_high_confidence" | "ip_blocklist_email_spam" | "ip_blocklist_attack_source" | "ip_abuser" | "datacenter_ip" | "bogon_ip" | "anycast_ip" | "emulator" | "root_apps" | "app_cloner" | "play_device_integrity_failed" | "play_app_unrecognized" | "device_activity_high" | "device_activity_very_high" | "frida" | "mitm_attack" | "active_call" | "attestation_failed" | "attestation_missing" | "attestation_downgrade" | "probe_errors" | "custom_root_ca" | "secondary_user_profile" | "vpn_mobile" | "jailbreak" | "simulator" | "repeated_reinstall";
             /**
              * Format: int64
              * @description What this signal added to the score
@@ -1207,10 +1325,14 @@ export interface components {
              * @enum {string}
              */
             consent?: "granted";
+            /** @description Web only: session asks for next_seal with an identified answer, which the page keeps for the life of its tab and sends back as seal. Omitted, no seal is issued and the page keeps nothing */
+            continuity?: string;
             /** @description Empty for a report. ticket asks for a web freshness ticket instead: a public key on the web only, with a body of v, op and sdk, answered 200 with ticket and expires_at, never charged */
             op?: string;
             /** @description Which SDK collected these signals */
             sdk?: components["schemas"]["SDKInfo"];
+            /** @description Web only, with continuity session: the next_seal of the previous answer in this tab. One that does not verify is ignored */
+            seal?: string;
             /** @description The platform-specific signals the SDK collected */
             signals?: {
                 [key: string]: unknown;
@@ -1357,7 +1479,7 @@ export interface components {
             /** @description key, organization or default */
             scope: string;
             /** @description New values can be added within API v1, so accept values not listed here. */
-            signals: ("incognito" | "tampering" | "antidetect_browser" | "automation" | "fetch_metadata_missing" | "web_ticket_missing" | "web_ticket_invalid" | "bad_bot" | "device_farm" | "high_activity" | "virtual_machine" | "fingerprint_suppressed" | "embedded_web_view" | "privacy_settings" | "remote_control" | "developer_tools" | "geo_mismatch" | "device_inconsistent" | "report_incomplete" | "vpn_public" | "vpn_timezone" | "vpn_os_mismatch" | "vpn_relay" | "vpn_low_confidence" | "vpn_medium_confidence" | "vpn_high_confidence" | "tor" | "proxy" | "residential_proxy" | "residential_proxy_low_confidence" | "residential_proxy_medium_confidence" | "residential_proxy_high_confidence" | "ip_blocklist_email_spam" | "ip_blocklist_attack_source" | "ip_abuser" | "datacenter_ip" | "bogon_ip" | "anycast_ip" | "emulator" | "root_apps" | "app_cloner" | "play_device_integrity_failed" | "play_app_unrecognized" | "device_activity_high" | "device_activity_very_high" | "frida" | "mitm_attack" | "active_call" | "attestation_failed" | "attestation_missing" | "attestation_downgrade" | "probe_errors" | "custom_root_ca" | "secondary_user_profile" | "vpn_mobile" | "jailbreak" | "simulator" | "repeated_reinstall")[];
+            signals: ("incognito" | "tampering" | "antidetect_browser" | "automation" | "fetch_metadata_missing" | "web_ticket_missing" | "web_ticket_invalid" | "bad_bot" | "ai_spoofed" | "device_farm" | "high_activity" | "virtual_machine" | "fingerprint_suppressed" | "identity_obfuscated" | "embedded_web_view" | "privacy_settings" | "remote_control" | "developer_tools" | "geo_mismatch" | "device_inconsistent" | "report_incomplete" | "vpn_public" | "vpn_os_mismatch" | "vpn_relay" | "vpn_low_confidence" | "vpn_medium_confidence" | "vpn_high_confidence" | "tor" | "proxy" | "residential_proxy" | "residential_proxy_low_confidence" | "residential_proxy_medium_confidence" | "residential_proxy_high_confidence" | "ip_blocklist_email_spam" | "ip_blocklist_attack_source" | "ip_abuser" | "datacenter_ip" | "bogon_ip" | "anycast_ip" | "emulator" | "root_apps" | "app_cloner" | "play_device_integrity_failed" | "play_app_unrecognized" | "device_activity_high" | "device_activity_very_high" | "frida" | "mitm_attack" | "active_call" | "attestation_failed" | "attestation_missing" | "attestation_downgrade" | "probe_errors" | "custom_root_ca" | "secondary_user_profile" | "vpn_mobile" | "jailbreak" | "simulator" | "repeated_reinstall")[];
             /** @description Whether this scope has its own saved configuration */
             stored: boolean;
             /** Format: int64 */
@@ -1385,6 +1507,8 @@ export interface components {
         SDKEventOut: {
             agent?: string;
             agent_version?: string;
+            /** @description Present when visitor_kind is ai_bot: who operates the agent, what its traffic is for, and how far its claim was checked */
+            ai?: components["schemas"]["AIAgentOut"] | null;
             /**
              * @description New values can be added within API v1, so accept values not listed here.
              * @enum {string}
@@ -1485,7 +1609,7 @@ export interface components {
             id: string;
             /** @description public or secret */
             kind: string;
-            /** @description The tail of the secret, which is all a console ever shows */
+            /** @description The tail of the credential, used when masking secret keys */
             last4: string;
             /**
              * Format: date-time
@@ -1507,6 +1631,8 @@ export interface components {
             revoked_by?: string;
             /** @description active or revoked */
             status: string;
+            /** @description Full publishable key for kind=public; always omitted for secret keys */
+            value?: string;
             /**
              * Format: int64
              * @description Proof of work, in leading zero bits, the key's web freshness tickets ask for; 0 is none
@@ -1533,7 +1659,7 @@ export interface components {
              * @description New values can be added within API v1, so accept values not listed here.
              * @enum {string}
              */
-            key: "tor" | "ios_simulator" | "mitm_attack" | "frida_detected" | "virtual_machine" | "remote_control" | "datacenter_proxy" | "ip_blocklist" | "rooted_device" | "jailbroken_device" | "android_emulator" | "cloned_app" | "browser_tampering" | "fingerprint_suppressed" | "developer_tools" | "device_farm" | "bot" | "ip_reputation" | "residential_proxy" | "privacy_settings" | "embedded_web_view" | "high_activity" | "location_spoofing" | "vpn" | "incognito_mode" | "active_call" | "attestation_missing" | "attestation_failed" | "device_inconsistent" | "report_incomplete" | "custom_root_ca" | "secondary_user_profile" | "network_anomaly";
+            key: "tor" | "ios_simulator" | "mitm_attack" | "frida_detected" | "virtual_machine" | "remote_control" | "datacenter_proxy" | "ip_blocklist" | "rooted_device" | "jailbroken_device" | "android_emulator" | "cloned_app" | "browser_tampering" | "fingerprint_suppressed" | "identity_obfuscated" | "developer_tools" | "device_farm" | "bot" | "ip_reputation" | "residential_proxy" | "privacy_settings" | "embedded_web_view" | "high_activity" | "location_spoofing" | "vpn" | "incognito_mode" | "active_call" | "attestation_missing" | "attestation_failed" | "device_inconsistent" | "report_incomplete" | "custom_root_ca" | "secondary_user_profile" | "network_anomaly";
             label: string;
             /** @description New values can be added within API v1, so accept values not listed here. */
             platforms: ("web" | "android" | "ios")[];
@@ -1549,7 +1675,7 @@ export interface components {
              * @description New values can be added within API v1, so accept values not listed here.
              * @enum {string}
              */
-            signal: "incognito" | "tampering" | "antidetect_browser" | "automation" | "fetch_metadata_missing" | "web_ticket_missing" | "web_ticket_invalid" | "bad_bot" | "device_farm" | "high_activity" | "virtual_machine" | "fingerprint_suppressed" | "embedded_web_view" | "privacy_settings" | "remote_control" | "developer_tools" | "geo_mismatch" | "device_inconsistent" | "report_incomplete" | "vpn_public" | "vpn_timezone" | "vpn_os_mismatch" | "vpn_relay" | "vpn_low_confidence" | "vpn_medium_confidence" | "vpn_high_confidence" | "tor" | "proxy" | "residential_proxy" | "residential_proxy_low_confidence" | "residential_proxy_medium_confidence" | "residential_proxy_high_confidence" | "ip_blocklist_email_spam" | "ip_blocklist_attack_source" | "ip_abuser" | "datacenter_ip" | "bogon_ip" | "anycast_ip" | "emulator" | "root_apps" | "app_cloner" | "play_device_integrity_failed" | "play_app_unrecognized" | "device_activity_high" | "device_activity_very_high" | "frida" | "mitm_attack" | "active_call" | "attestation_failed" | "attestation_missing" | "attestation_downgrade" | "probe_errors" | "custom_root_ca" | "secondary_user_profile" | "vpn_mobile" | "jailbreak" | "simulator" | "repeated_reinstall";
+            signal: "incognito" | "tampering" | "antidetect_browser" | "automation" | "fetch_metadata_missing" | "web_ticket_missing" | "web_ticket_invalid" | "bad_bot" | "ai_spoofed" | "device_farm" | "high_activity" | "virtual_machine" | "fingerprint_suppressed" | "identity_obfuscated" | "embedded_web_view" | "privacy_settings" | "remote_control" | "developer_tools" | "geo_mismatch" | "device_inconsistent" | "report_incomplete" | "vpn_public" | "vpn_os_mismatch" | "vpn_relay" | "vpn_low_confidence" | "vpn_medium_confidence" | "vpn_high_confidence" | "tor" | "proxy" | "residential_proxy" | "residential_proxy_low_confidence" | "residential_proxy_medium_confidence" | "residential_proxy_high_confidence" | "ip_blocklist_email_spam" | "ip_blocklist_attack_source" | "ip_abuser" | "datacenter_ip" | "bogon_ip" | "anycast_ip" | "emulator" | "root_apps" | "app_cloner" | "play_device_integrity_failed" | "play_app_unrecognized" | "device_activity_high" | "device_activity_very_high" | "frida" | "mitm_attack" | "active_call" | "attestation_failed" | "attestation_missing" | "attestation_downgrade" | "probe_errors" | "custom_root_ca" | "secondary_user_profile" | "vpn_mobile" | "jailbreak" | "simulator" | "repeated_reinstall";
             weights: {
                 [key: string]: number;
             };
@@ -1647,6 +1773,15 @@ export interface components {
         VisitorErasuresOut: {
             erasures: components["schemas"]["VisitorErasureOut"][];
         };
+        WebSealOut: {
+            /**
+             * Format: date-time
+             * @description When the seal stops being accepted, RFC 3339 UTC
+             */
+            expires_at: string;
+            /** @description Unpadded base64url seal, sent as seal on the next report from this tab */
+            seal: string;
+        };
         WebTicketOut: {
             /**
              * Format: date-time
@@ -1731,6 +1866,75 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    reportRequestsYourServerServed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentSightingsIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSightingsOut"];
+                };
+            };
+            /** @description No usable secret SDK key was presented */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The organization is suspended or closed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `invalid_request`: no items or more than 200, a header over 4096 bytes, an address that is not one IP literal, or a count over 1000000 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `rate_limited`: over the key's, the address's or the organization's rate, or the organization's daily allowance (`Fingerly-RateLimit-Scope: daily`); retry after Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description An unexpected error occurred. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     requestAttestationChallenge: {
         parameters: {
             query?: never;
@@ -1811,6 +2015,12 @@ export interface operations {
                 visitor?: string;
                 /** @description low, medium or high */
                 level?: "low" | "medium" | "high";
+                /** @description human, ai_bot, automation or search_crawler */
+                kind?: "human" | "ai_bot" | "automation" | "search_crawler";
+                /** @description An AI agent's operator, exactly as events name it, such as OpenAI */
+                ai_provider?: string;
+                /** @description training, search, user_fetch or agent */
+                ai_purpose?: "training" | "search" | "user_fetch" | "agent";
             };
             header?: never;
             path?: never;

@@ -6,6 +6,8 @@
  */
 
 export { Fingerly, load } from "./client.js";
+export { AgentsClient } from "./agents.js";
+export { AgentSightings, createAgentSightings } from "./sightings.js";
 export { DeviceCheckClient } from "./device-check.js";
 export { EventsClient } from "./events.js";
 export { FingerlyProxy, createNodeProxy, createProxy } from "./proxy.js";
@@ -18,6 +20,10 @@ export {
 } from "./errors.js";
 export type { APIErrorMetadata } from "./errors.js";
 export {
+  AIPurpose,
+  AIRuntime,
+  AIVerificationMethod,
+  AIVerificationResult,
   AnonymityNetwork,
   AttestSkippedReason,
   AttestationState,
@@ -36,6 +42,12 @@ export {
   WebhookEventType,
 } from "./enums.js";
 export type {
+  AgentAnswer,
+  AgentSighting,
+  AgentSightingsOptions,
+  AgentSightingsResponse,
+  AIAgent,
+  AIVerification,
   Attestation,
   DeviceCheckBits,
   DeviceCheckWrite,
