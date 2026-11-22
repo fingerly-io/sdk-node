@@ -368,6 +368,88 @@ describe("the answer cache", () => {
     );
   });
 
+  it("never remembers an answer that is not what AgentAnswer declares", async () => {
+    const agent = fixture.body.items.find(
+      (item: { ai?: unknown }) => item.ai !== undefined,
+    ).ai;
+    const shapes: Record<string, unknown> = {
+      "null-ai-fields": {
+        ttl: 60,
+        visitor_kind: VisitorKind.AiBot,
+        ai: { name: null, provider: null, purpose: null, runtime: null },
+      },
+      "null-verification": {
+        ttl: 60,
+        visitor_kind: VisitorKind.AiBot,
+        ai: { ...agent, verification: null },
+      },
+      "ai-string": { ttl: 60, visitor_kind: VisitorKind.AiBot, ai: "GPTBot" },
+      "declared-string": {
+        ttl: 60,
+        visitor_kind: VisitorKind.AiBot,
+        ai: { ...agent, declared: "yes" },
+      },
+      "agent-number": { ttl: 60, visitor_kind: VisitorKind.AiBot, agent: 7 },
+      "ttl-string": { ttl: "60", visitor_kind: VisitorKind.AiBot },
+      "kind-null": { ttl: 60, visitor_kind: null },
+      "item-null": null,
+      "nulls-as-absent": {
+        ttl: 60,
+        visitor_kind: VisitorKind.Human,
+        agent: null,
+        ai: null,
+      },
+      "unknown-values": {
+        ttl: 60,
+        visitor_kind: "hologram",
+        agent: "Zed",
+        ai: {
+          ...agent,
+          purpose: "quantum",
+          verification: { method: "telepathy", result: "maybe", extra: 1 },
+          colour: "blue",
+        },
+        extra: { big: "x".repeat(10_000) },
+      },
+    };
+    const { sightings } = harness((items) =>
+      Response.json({
+        rules_version: "r1",
+        items: items.map((item) => shapes[item.user_agent]),
+      }),
+    );
+    for (const ua of Object.keys(shapes))
+      sightings.report(request(ua, "198.51.100.1"), html());
+    await sightings.flush();
+    const found = (ua: string) => sightings.lookup(request(ua, "198.51.100.1"));
+    for (const ua of [
+      "null-ai-fields",
+      "null-verification",
+      "ai-string",
+      "declared-string",
+      "agent-number",
+      "ttl-string",
+      "kind-null",
+      "item-null",
+    ])
+      expect(found(ua), ua).toBe(AgentSightings.Unknown);
+    expect(found("nulls-as-absent")).toEqual({
+      ttl: 60,
+      visitor_kind: VisitorKind.Human,
+    });
+    // Open values are kept; fields the type does not name are not.
+    expect(found("unknown-values")).toEqual({
+      ttl: 60,
+      visitor_kind: "hologram",
+      agent: "Zed",
+      ai: {
+        ...agent,
+        purpose: "quantum",
+        verification: { method: "telepathy", result: "maybe" },
+      },
+    });
+  });
+
   it("remembers an answer for at most 86400 seconds, whatever its ttl", async () => {
     const { sightings, clock } = harness((items) => answer(items, 10_000_000));
     sightings.report(request("long", "198.51.100.1"), html());
@@ -775,6 +857,34 @@ describe("the failure table", () => {
       await sightings.flush();
       expect(sent).toHaveLength(1);
       expect(errors).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    ["an empty body", () => new Response("")],
+    ["an HTML page", () => new Response("<html>oops</html>")],
+    ["JSON null", () => new Response("null")],
+    ["an array", () => new Response("[]")],
+    ["nulls", () => Response.json({ rules_version: null, items: null })],
+  ])(
+    "drops a 200 with %s and says the answer was unusable",
+    async (_name, reply) => {
+      const { sightings, sent, errors } = harness(reply);
+      sightings.report(request("a", "198.51.100.1"), html());
+      await sightings.flush();
+      sightings.report(request("b", "198.51.100.1"), html());
+      await sightings.flush();
+      expect(sent).toHaveLength(2);
+      expect(errors).toEqual([
+        {
+          kind: "upstream",
+          message:
+            "the API answered a report unusably; its requests were dropped",
+        },
+      ]);
+      expect(sightings.lookup(request("a", "198.51.100.1"))).toBe(
+        AgentSightings.Unknown,
+      );
     },
   );
 

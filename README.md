@@ -357,7 +357,7 @@ app.get("/pricing", (req, res) => {
 | `429` | Keeps the requests and waits for `Retry-After` (`daily` scope: until the next UTC day) before reporting again. |
 | `503`, or the API could not be reached | Keeps the requests and retries after 1 second, doubling up to 60 seconds. |
 | `401` / `403` | Drops the requests, pauses for 60 seconds and logs: the key is wrong or revoked. |
-| `422`, or any other status | Drops the requests and logs. |
+| `422`, any other status, or a `200` it cannot read | Drops the requests and logs. |
 | No answer within the deadline | Drops the requests: Fingerly may have counted them already. |
 
 Problems go to `console.error`, at most once a minute each, or to `onError` with a `ProxyFailureKind`, and never carry a reported field. `sightings.flush()` sends everything waiting now and `sightings.close()` stops the timer and sends what is left; neither rejects. On serverless and edge runtimes, where nothing runs after the invocation ends, call `flush()` before it does, for example `waitUntil(sightings.flush())`.

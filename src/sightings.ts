@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { isIP } from "node:net";
 import { AgentsClient } from "./agents.js";
+import { decodeAIAgent, isObject } from "./decode.js";
 import { ProxyFailureKind } from "./enums.js";
 import {
   FingerlyAPIError,
@@ -550,19 +551,13 @@ export class AgentSightings {
       this.#rulesVersion = answer.rules_version;
     }
     const now = this.#now();
-    answer.items.forEach((item, index) => {
-      if (
-        typeof item !== "object" ||
-        item === null ||
-        typeof item.ttl !== "number" ||
-        !(item.ttl > 0) ||
-        typeof item.visitor_kind !== "string"
-      )
-        return;
+    answer.items.forEach((item: unknown, index) => {
+      const decoded = decodeAnswer(item);
+      if (decoded === null || !(decoded.ttl > 0)) return;
       this.#remember(
         batch[index]!.key,
-        frozen(item),
-        now + Math.min(item.ttl, MAX_TTL_SECONDS) * 1000,
+        decoded,
+        now + Math.min(decoded.ttl, MAX_TTL_SECONDS) * 1000,
       );
     });
     return "sent";
@@ -581,6 +576,15 @@ export class AgentSightings {
     }
     if (error instanceof FingerlyAPIError) {
       const status = error.status;
+      if (status >= 200 && status < 300) {
+        // Not JSON, not an object or over 4 MiB: the same as a bad answer.
+        this.#warn(
+          "answer",
+          ProxyFailureKind.Upstream,
+          "the API answered a report unusably; its requests were dropped",
+        );
+        return "dropped";
+      }
       if (status === 429) {
         this.#restore(batch);
         // An unreadable or negative Retry-After reads as missing; a zero or
@@ -889,16 +893,30 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
   );
 }
 
-/** A remembered answer the caller cannot change. */
-function frozen(answer: AgentAnswer): AgentAnswer {
-  const copy: AgentAnswer = { ...answer };
-  if (copy.ai !== undefined && copy.ai !== null) {
-    const ai = { ...copy.ai };
-    if (typeof ai.verification === "object" && ai.verification !== null)
-      ai.verification = Object.freeze({ ...ai.verification });
-    copy.ai = Object.freeze(ai);
+/**
+ * One answer as {@link AgentAnswer} declares it, frozen so the caller cannot
+ * change what is remembered, or null when a field is missing or of the wrong
+ * type: remembered, it would reach the caller's code as a field the type
+ * promised and the answer lacked. Fields the type does not name are left
+ * out, so a remembered answer stays small. An `agent` or `ai` of null reads
+ * as absent.
+ */
+function decodeAnswer(item: unknown): AgentAnswer | null {
+  if (!isObject(item)) return null;
+  const { ttl, visitor_kind, agent, ai } = item;
+  if (typeof ttl !== "number" || typeof visitor_kind !== "string") return null;
+  const answer: AgentAnswer = { ttl, visitor_kind };
+  if (agent !== undefined && agent !== null) {
+    if (typeof agent !== "string") return null;
+    answer.agent = agent;
   }
-  return Object.freeze(copy);
+  if (ai !== undefined && ai !== null) {
+    const decoded = decodeAIAgent(ai);
+    if (decoded === null) return null;
+    Object.freeze(decoded.verification);
+    answer.ai = Object.freeze(decoded);
+  }
+  return Object.freeze(answer);
 }
 
 function stringList(value: unknown, name: string): string[] {
