@@ -4,6 +4,7 @@ import {
   normalizeApiVersion,
   parseKey,
   positiveInt,
+  SDK_VERSION,
 } from "./config.js";
 import { withDeadline } from "./deadline.js";
 import { MAX_RESPONSE_BYTES, readLimited } from "./body.js";
@@ -22,6 +23,8 @@ const DEFAULT_TIMEOUT_MS = 5_000;
 const SPEND_RETRIES = 2;
 /** Base pause before a retry; the nth retry waits n times this. */
 const RETRY_DELAY_MS = 200;
+/** What every call names itself as, in place of the runtime's own `node`. */
+const USER_AGENT = `fingerly-node/${SDK_VERSION}`;
 
 /** Waits `ms`, or rejects with the signal's reason when it aborts first. */
 function pause(ms: number, signal?: AbortSignal): Promise<void> {
@@ -246,6 +249,7 @@ export class APITransport {
           const headers: Record<string, string> = {
             "x-api-key": this.#secretKey!,
             accept: "application/json",
+            "user-agent": USER_AGENT,
           };
           if (payload !== undefined)
             headers["content-type"] = "application/json";

@@ -6,6 +6,7 @@ import {
   normalizeOrigin,
   parseKey,
   positiveInt,
+  SDK_VERSION,
 } from "./config.js";
 import type { KeyScope } from "./config.js";
 import { MAX_RESPONSE_BYTES, readLimited } from "./body.js";
@@ -27,7 +28,7 @@ const DEFAULT_MAX_BODY_BYTES = 1_048_576;
 const DEFAULT_TIMEOUT_MS = 5_000;
 
 /** What this proxy reports itself as upstream; shown per proxy in the dashboard. */
-const PROXY_VERSION = "node/0.4.1";
+const PROXY_VERSION = `node/${SDK_VERSION}`;
 
 /** Statuses that must not carry a body. */
 const BODILESS_STATUSES = new Set([204, 205, 304]);

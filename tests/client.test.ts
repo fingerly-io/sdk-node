@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { Fingerly, EventsClient, FingerlyProxy, load } from "../src/index.js";
 
@@ -113,6 +114,26 @@ describe("API version configuration", () => {
       "https://api.fingerly.io/api/v2/events/request-1",
       "https://api.fingerly.io/api/v2/events?limit=10",
     ]);
+  });
+
+  it("names itself fingerly-node and its version on every call", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(
+        async () => new Response('{"rows":[],"rules_version":"r","items":[]}'),
+      );
+    const client = new Fingerly({ secretKey, fetchImpl });
+    await client.events.get("request-1");
+    await client.events.list();
+    await client.agents.sightings([]);
+    const { version } = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    ) as { version: string };
+    expect(
+      fetchImpl.mock.calls.map(
+        ([, init]) => (init?.headers as Record<string, string>)["user-agent"],
+      ),
+    ).toEqual(Array(3).fill(`fingerly-node/${version}`));
   });
 
   it.each(["", "1", "v0", "v1/../v2", "v2?key=value", "v2#fragment", "v2\n"])(
