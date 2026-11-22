@@ -20,7 +20,7 @@ export interface KeyScope {
 export const DEFAULT_ENDPOINT = "https://api.fingerly.io";
 
 /** This package's version, as `package.json` states it; a test keeps them equal. */
-export const SDK_VERSION = "0.5.0";
+export const SDK_VERSION = "0.5.1";
 
 const KEY = /^fly_(pk|sk|px)_(production|staging|development)_[A-Za-z0-9_-]+$/;
 
