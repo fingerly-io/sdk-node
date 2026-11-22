@@ -354,7 +354,7 @@ app.get("/pricing", (req, res) => {
 | API answer | What the reporter does |
 | --- | --- |
 | `200` | Remembers each answer for its `ttl`. |
-| `429` | Keeps the requests and waits for `Retry-After` (`daily` scope: until the next UTC day) before reporting again. |
+| `429` | Keeps the requests and waits for `Retry-After` (`daily` scope: until the next UTC day) before reporting again, at least 1 second and at most 24 hours. |
 | `503`, or the API could not be reached | Keeps the requests and retries after 1 second, doubling up to 60 seconds. |
 | `401` / `403` | Drops the requests, pauses for 60 seconds and logs: the key is wrong or revoked. |
 | `422`, any other status, or a `200` it cannot read | Drops the requests and logs. |

@@ -655,6 +655,35 @@ describe("the failure table", () => {
     expect(sent[1]!.map((item) => item.user_agent)).toEqual(["a", "b"]);
   });
 
+  it.each([
+    "2147483647",
+    "99999999999999999999",
+    "Fri, 01 Jan 2100 00:00:00 GMT",
+  ])(
+    "waits at most 24 hours after a 429 whose Retry-After is %s",
+    async (retryAfter) => {
+      let refuse = true;
+      const { sightings, sent, clock } = harness((items) =>
+        refuse
+          ? new Response("{}", {
+              status: 429,
+              headers: { "retry-after": retryAfter },
+            })
+          : answer(items),
+      );
+      sightings.report(request("a", "198.51.100.1"), html());
+      await sightings.flush();
+      refuse = false;
+      clock.now = 86_399_999;
+      await sightings.flush();
+      expect(sent).toHaveLength(1);
+      clock.now = 86_400_000;
+      await sightings.flush();
+      expect(sent).toHaveLength(2);
+      expect(sent[1]!.map((item) => item.user_agent)).toEqual(["a"]);
+    },
+  );
+
   it.each(["0", "Thu, 01 Jan 1970 00:00:00 GMT"])(
     "waits at least 1 second after a 429 whose Retry-After is %s",
     async (retryAfter) => {
