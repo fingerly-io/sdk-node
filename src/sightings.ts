@@ -63,6 +63,8 @@ const TICK_MS = 250;
 /** Paths reported whatever their content type or status. */
 const ALWAYS_REPORTED = new Set(["/robots.txt", "/llms.txt", "/llms-full.txt"]);
 const DEFAULT_CONTENT_TYPES = ["text/html", "application/xhtml+xml"];
+/** A media type alone, `type/subtype`, as a `contentTypes` entry must be. */
+const MEDIA_TYPE = /^[^\s/;,]+\/[^\s/;,]+$/;
 
 /** The answer for a request the reporter has no answer for. */
 const UNKNOWN: AgentAnswer = Object.freeze({ ttl: 0, visitor_kind: "" });
@@ -158,12 +160,17 @@ export class AgentSightings {
     if (!Number.isSafeInteger(size) || size < 1)
       throw new TypeError("cacheSize must be a positive integer");
     this.#cacheSize = Math.min(size, MAX_CACHE_SIZE);
-    this.#contentTypes = new Set(
-      stringList(
-        options.contentTypes ?? DEFAULT_CONTENT_TYPES,
-        "contentTypes",
-      ).map((type) => type.trim().toLowerCase()),
-    );
+    const types = stringList(
+      options.contentTypes ?? DEFAULT_CONTENT_TYPES,
+      "contentTypes",
+    ).map((type) => type.trim().toLowerCase());
+    // A response's type is compared without its parameters, so an entry
+    // with any would never match.
+    if (types.some((type) => !MEDIA_TYPE.test(type)))
+      throw new TypeError(
+        "contentTypes entries must be media types without parameters, such as text/html",
+      );
+    this.#contentTypes = new Set(types);
     this.#include = pathList(options.includePaths, "includePaths");
     this.#exclude = pathList(options.excludePaths, "excludePaths");
     this.#clientIp = options.clientIp;

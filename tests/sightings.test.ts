@@ -1151,6 +1151,20 @@ describe("which responses are reported", () => {
           } as AgentSightingsOptions),
       ).toThrow(TypeError);
   });
+
+  it("refuses a content type that could never match, such as one with parameters", () => {
+    const make = (contentTypes: string[]) => () =>
+      new AgentSightings({ secretKey: key, clientIp: () => "", contentTypes });
+    for (const type of [
+      "text/html; charset=utf-8",
+      "html",
+      "text/html,text/plain",
+    ])
+      expect(make([type]), type).toThrow(
+        "contentTypes entries must be media types without parameters, such as text/html",
+      );
+    expect(make([" Text/HTML ", "application/ld+json"])).not.toThrow();
+  });
 });
 
 describe("the Node middleware", () => {
