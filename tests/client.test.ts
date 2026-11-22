@@ -27,7 +27,9 @@ describe("Fingerly class API", () => {
   it("keeps every read out of a framework's fetch cache", async () => {
     const client = new Fingerly({ secretKey });
     // A framework patches fetch after the module that made the client loaded.
-    const patched = vi.fn<typeof fetch>().mockResolvedValue(new Response("{}"));
+    const patched = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response('{"rows":[]}'));
     vi.stubGlobal("fetch", patched);
     try {
       await client.events.list();
@@ -103,7 +105,7 @@ describe("API version configuration", () => {
   it("uses the constructor version for every event request", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
-      .mockImplementation(async () => new Response("{}"));
+      .mockImplementation(async () => new Response('{"rows":[]}'));
     const client = new Fingerly({ secretKey, apiVersion: "v2", fetchImpl });
     await client.events.get("request-1");
     await client.events.list({ limit: 10 });

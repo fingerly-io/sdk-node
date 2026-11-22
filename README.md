@@ -132,7 +132,7 @@ if (signals.includes(Signal.FingerprintSuppressed)) {
 
 | Error | When | Carries |
 | --- | --- | --- |
-| `FingerlyAPIError` | any non-2xx answer, redirects included, or a 2xx that is not JSON or exceeds 4 MiB (`code` `invalid_response` or `response_too_large`) | `status`, `code`, `details`, `requestId`, `retryAfter` (seconds, or `null`), `rateLimitScope` (which limit refused a `429`, such as `daily`, or `null`) |
+| `FingerlyAPIError` | any non-2xx answer, redirects included, or a 2xx that exceeds 4 MiB (`code` `response_too_large`) or is not the JSON object the API sends (`code` `invalid_response`, for example an event whose `ai` lacks a field `AIAgent` declares) | `status`, `code`, `details`, `requestId`, `retryAfter` (seconds, or `null`), `rateLimitScope` (which limit refused a `429`, such as `daily`, or `null`) |
 | `FingerlyTimeoutError` | the deadline passed | |
 | `FingerlyConnectionError` | the API could not be reached or the connection dropped mid-response; `FingerlyTimeoutError` is a kind of it | `cause` |
 

@@ -1,4 +1,5 @@
 import { positiveInt } from "./config.js";
+import { acceptEvent, acceptEventPage } from "./decode.js";
 import {
   FingerlyAPIError,
   FingerlyEventAlreadyConsumedError,
@@ -40,7 +41,7 @@ export class EventsClient {
     } catch (error) {
       return Promise.reject(error);
     }
-    return this.transport.get<Event>(path, signal);
+    return this.transport.get<Event>(path, signal, acceptEvent);
   }
 
   /**
@@ -163,6 +164,7 @@ export class EventsClient {
     return this.transport.get<EventPage>(
       search ? `/events?${search}` : "/events",
       query.signal,
+      acceptEventPage,
     );
   }
 }

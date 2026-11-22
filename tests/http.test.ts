@@ -178,6 +178,44 @@ describe("reading one event", () => {
       undefined,
     ]);
   });
+  it("refuses an AI agent that is not what AIAgent declares, on get and list", async () => {
+    const agent = {
+      name: "GPTBot",
+      provider: "OpenAI",
+      purpose: "training",
+      runtime: "provider_cloud",
+      declared: true,
+      verification: { method: "ip_list", result: "pass" },
+    };
+    const respond = (body: unknown) =>
+      load({ secretKey: key, fetchImpl: async () => Response.json(body) })
+        .events;
+    for (const ai of [
+      "GPTBot",
+      [],
+      { ...agent, name: null },
+      { ...agent, declared: "true" },
+      { ...agent, verification: null },
+      { ...agent, verification: { method: "ip_list" } },
+    ]) {
+      const unusable = { status: 200, code: "invalid_response" };
+      await expect(respond({ ...event, ai }).get("id")).rejects.toMatchObject(
+        unusable,
+      );
+      await expect(
+        respond({ rows: [event, { ...event, ai }] }).list(),
+      ).rejects.toMatchObject(unusable);
+    }
+    for (const rows of [null, undefined, {}, [null]])
+      await expect(respond({ rows }).list()).rejects.toMatchObject({
+        code: "invalid_response",
+      });
+    // An ai of null reads as absent; open values and extra fields pass.
+    const absent = await respond({ ...event, ai: null }).get("id");
+    expect("ai" in absent).toBe(false);
+    const open = { ...agent, purpose: "quantum", colour: "blue" };
+    expect((await respond({ ...event, ai: open }).get("id")).ai).toEqual(open);
+  });
   it("makes exactly one request and never retries, whatever comes back", async () => {
     for (const status of [400, 401, 403, 404, 429, 500]) {
       const fetchImpl = vi.fn(async () =>
@@ -301,6 +339,32 @@ describe("reading one event", () => {
     await expect(
       respond(new Response(new Uint8Array(4 * 1_048_576 + 1))),
     ).rejects.toMatchObject({ status: 200, code: "response_too_large" });
+  });
+  it.each([
+    ["null", "null"],
+    ["an array", "[]"],
+    ["a string", '"event"'],
+    ["a number", "5"],
+  ])("refuses a 2xx whose JSON is %s on every read", async (_name, body) => {
+    const client = load({
+      secretKey: key,
+      fetchImpl: async () => new Response(body),
+    });
+    const unusable = { status: 200, code: "invalid_response" };
+    await expect(client.events.get("id")).rejects.toMatchObject(unusable);
+    await expect(client.events.list()).rejects.toMatchObject(unusable);
+    await expect(client.events.consume("id")).rejects.toMatchObject(unusable);
+    // verify reads fields of the event: never a TypeError instead.
+    await expect(client.events.verify("id")).rejects.toBeInstanceOf(
+      FingerlyAPIError,
+    );
+    await expect(
+      client.deviceCheck.write("id", { bit0: true }),
+    ).rejects.toMatchObject(unusable);
+    await expect(client.deviceCheck.query("id")).rejects.toMatchObject(
+      unusable,
+    );
+    await expect(client.agents.sightings([])).rejects.toMatchObject(unusable);
   });
   it("parses both forms of Retry-After", () => {
     const now = Date.parse("2026-11-04T12:00:00Z");

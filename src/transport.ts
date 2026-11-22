@@ -7,6 +7,7 @@ import {
 } from "./config.js";
 import { withDeadline } from "./deadline.js";
 import { MAX_RESPONSE_BYTES, readLimited } from "./body.js";
+import { isObject } from "./decode.js";
 import {
   FingerlyAPIError,
   FingerlyConnectionError,
@@ -46,6 +47,11 @@ export interface SendOptions {
   timeoutMs?: number;
   /** Set to true once the answer's status line arrived. */
   progress?: { responded: boolean };
+  /**
+   * Checks a 2xx answer's object, and may tidy it in place; false turns it
+   * into an `invalid_response` error.
+   */
+  accept?: (body: Record<string, unknown>) => boolean;
 }
 
 /** Shape of the API's error envelope; every field is treated as untrusted. */
@@ -126,14 +132,26 @@ export class APITransport {
    *
    * @param path Path below the versioned base URL, already encoded.
    * @param signal Caller cancellation; its reason is preserved.
+   * @param accept Checks the answer's object; false makes it unusable.
    * @throws {FingerlyAPIError} On any non-2xx response, redirects included,
-   *   and on a 2xx that is not JSON or exceeds 4 MiB.
+   *   and on a 2xx that exceeds 4 MiB, is not a JSON object or fails
+   *   `accept`.
    * @throws {FingerlyTimeoutError} When the deadline elapses.
    * @throws {FingerlyConnectionError} When the API cannot be reached or the
    *   connection drops mid-response.
    */
-  get<T>(path: string, signal?: AbortSignal): Promise<T> {
-    return this.send<T>("GET", path, undefined, signal);
+  get<T>(
+    path: string,
+    signal?: AbortSignal,
+    accept?: SendOptions["accept"],
+  ): Promise<T> {
+    return this.send<T>(
+      "GET",
+      path,
+      undefined,
+      signal,
+      accept ? { accept } : {},
+    );
   }
 
   /**
@@ -259,11 +277,18 @@ export class APITransport {
         if (!response.ok) throw this.toApiError(response, bytes);
         if (bytes === null)
           throw this.invalidResponse(response, "response_too_large");
+        let parsed: unknown;
         try {
-          return JSON.parse(bytes.toString("utf8")) as T;
+          parsed = JSON.parse(bytes.toString("utf8"));
         } catch {
           throw this.invalidResponse(response, "invalid_response");
         }
+        // Every answer the API sends is a JSON object. Anything else, or an
+        // object the caller's check refuses, would otherwise surface later
+        // as a TypeError in the code reading it.
+        if (!isObject(parsed) || (extra.accept && !extra.accept(parsed)))
+          throw this.invalidResponse(response, "invalid_response");
+        return parsed as T;
       },
     );
   }
