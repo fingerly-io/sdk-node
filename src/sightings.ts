@@ -338,7 +338,12 @@ export class AgentSightings {
     const type =
       headerText(res.getHeader("content-type")) ?? sentContentType(res);
     if (!this.#inScope(path, type)) return;
-    this.#record(this.#fetchRequestOf(req), peer, req.method ?? "GET");
+    this.#record(
+      this.#fetchRequestOf(req),
+      peer,
+      req.method ?? "GET",
+      headerText(req.headers.host ?? req.headers[":authority"]),
+    );
   }
 
   /** Whether a response is reported: never decided by the visitor. */
@@ -352,8 +357,17 @@ export class AgentSightings {
     return media !== "" && this.#contentTypes.has(media);
   }
 
-  /** Resolves the address, waiting for an asynchronous callback, then records. */
-  #record(request: Request, peer: ProxyPeer, method: string): void {
+  /**
+   * Resolves the address, waiting for an asynchronous callback, then records.
+   * `host` is the `Host` as received, when the caller has it; otherwise the
+   * request's own.
+   */
+  #record(
+    request: Request,
+    peer: ProxyPeer,
+    method: string,
+    host?: string | null,
+  ): void {
     let value: unknown;
     try {
       value = this.#clientIp(request, peer);
@@ -362,18 +376,24 @@ export class AgentSightings {
     }
     if (isThenable(value)) {
       value.then(
-        (resolved) => this.#recordAt(request, this.#validIp(resolved), method),
+        (resolved) =>
+          this.#recordAt(request, this.#validIp(resolved), method, host),
         () => this.#unresolvedIp(),
       );
       return;
     }
-    this.#recordAt(request, this.#validIp(value), method);
+    this.#recordAt(request, this.#validIp(value), method, host);
   }
 
-  #recordAt(request: Request, ip: string | null, method: string): void {
+  #recordAt(
+    request: Request,
+    ip: string | null,
+    method: string,
+    host?: string | null,
+  ): void {
     try {
       if (ip === null) return this.#unresolvedIp();
-      const captured = capture(request, ip, method);
+      const captured = capture(request, ip, method, host);
       if (captured !== null) this.#add(captured);
     } catch {
       // Reporting never reaches the customer's request.
@@ -794,9 +814,15 @@ export function canonicalIp(value: string): string | null {
 /**
  * The fields of one request, or null when its user agent is too long to
  * report. A Web Bot Auth header over 4096 bytes is left out, and counts as
- * absent for the key too.
+ * absent for the key too. `host` is the `Host` as received where the caller
+ * has it (null when the request had none); otherwise the request's own.
  */
-function capture(request: Request, ip: string, method: string): Capture | null {
+function capture(
+  request: Request,
+  ip: string,
+  method: string,
+  host?: string | null,
+): Capture | null {
   const headers = request.headers;
   const userAgent = headerValue(headers.get("user-agent") ?? "");
   if (tooLong(userAgent)) return null;
@@ -804,18 +830,15 @@ function capture(request: Request, ip: string, method: string): Capture | null {
   const signatureInput = optional(headers.get("signature-input"));
   const signatureAgent = optional(headers.get("signature-agent"));
   const signed = signature !== null && signatureInput !== null;
-  const hostHeader = headers.get("host");
-  const host =
-    hostHeader !== null && hostHeader !== ""
-      ? headerValue(hostHeader).text
-      : hostOf(request.url);
+  const received =
+    host !== undefined ? host : headers.get("host") || hostOf(request.url);
 
   const item: AgentSighting & { count: number } = {
     user_agent: userAgent.text,
     client_ip: ip,
     count: 1,
   };
-  if (host !== "") item.host = host;
+  if (received) item.host = headerValue(received).text;
   if (method !== "") item.method = method;
   if (signature !== null) item.signature = signature.text;
   if (signatureInput !== null) item.signature_input = signatureInput.text;

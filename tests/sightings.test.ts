@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import http from "node:http";
 import { readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
@@ -1234,6 +1235,36 @@ describe("the Node middleware", () => {
     } finally {
       await new Promise((resolve) => app.close(resolve));
     }
+  });
+
+  it("sends the Host as received, and none when the request had none", async () => {
+    const { sightings, sent } = harness();
+    const finish = (headers: Record<string, string>, ip: string) => {
+      const res = Object.assign(new EventEmitter(), {
+        getHeader: (name: string) =>
+          name === "content-type" ? "text/html" : undefined,
+      });
+      sightings.handleNode(
+        {
+          method: "GET",
+          url: "/page",
+          headers: { "user-agent": gptbot, "x-test-ip": ip, ...headers },
+          socket: { encrypted: true },
+        } as never,
+        res as never,
+      );
+      res.emit("finish");
+    };
+    // HTTP/1.0 without a Host header, and HTTP/2, which names it :authority.
+    finish({}, "198.51.100.1");
+    finish({ ":authority": "Shop.Test:443" }, "198.51.100.2");
+    finish({ host: "Shop.Test:443" }, "198.51.100.3");
+    await sightings.flush();
+    expect(sent.flat().map((item) => item.host ?? null)).toEqual([
+      null,
+      "Shop.Test:443",
+      "Shop.Test:443",
+    ]);
   });
 
   it("calls next once and keeps serving after close", async () => {
