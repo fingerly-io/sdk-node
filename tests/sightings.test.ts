@@ -1197,6 +1197,45 @@ describe("the Node middleware", () => {
     }
   });
 
+  it("sees a content type given to writeHead, as node:http and Fastify send it", async () => {
+    const { sightings, sent } = harness();
+    const app = http.createServer((req, res) => {
+      sightings.handleNode(req, res);
+      // writeHead with headers and no setHeader before it: Node sends them
+      // without keeping them for getHeader.
+      if (req.url === "/object") {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      } else if (req.url === "/pairs") {
+        res.writeHead(200, [["Content-Type", "TEXT/HTML"]]);
+      } else if (req.url === "/flat") {
+        res.writeHead(200, ["content-type", "application/xhtml+xml"]);
+      } else {
+        res.writeHead(200, { "Content-Type": "application/json" });
+      }
+      res.end("x");
+    });
+    await new Promise<void>((resolve) => app.listen(0, "127.0.0.1", resolve));
+    const port = (app.address() as AddressInfo).port;
+    try {
+      for (const [path, ip] of [
+        ["/object", "198.51.100.1"],
+        ["/pairs", "198.51.100.2"],
+        ["/flat", "198.51.100.3"],
+        ["/json", "198.51.100.4"],
+      ] as const)
+        await get(port, path, { "user-agent": gptbot, "x-test-ip": ip });
+      await sleep(20);
+      await sightings.flush();
+      expect(sent.flat().map((item) => item.client_ip)).toEqual([
+        "198.51.100.1",
+        "198.51.100.2",
+        "198.51.100.3",
+      ]);
+    } finally {
+      await new Promise((resolve) => app.close(resolve));
+    }
+  });
+
   it("calls next once and keeps serving after close", async () => {
     const sightings = createAgentSightings({
       secretKey: key,

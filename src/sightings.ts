@@ -335,7 +335,9 @@ export class AgentSightings {
     if (this.#closing !== null) return;
     const raw = req as NodeRequest & { originalUrl?: string };
     const path = (raw.originalUrl ?? raw.url ?? "/").split("?", 1)[0]!;
-    if (!this.#inScope(path, headerText(res.getHeader("content-type")))) return;
+    const type =
+      headerText(res.getHeader("content-type")) ?? sentContentType(res);
+    if (!this.#inScope(path, type)) return;
     this.#record(this.#fetchRequestOf(req), peer, req.method ?? "GET");
   }
 
@@ -885,6 +887,19 @@ function headerText(value: unknown): string | null {
   if (typeof value === "number") return String(value);
   if (Array.isArray(value) && typeof value[0] === "string") return value[0];
   return null;
+}
+
+/**
+ * The `Content-Type` in the head a response sent. `writeHead(status,
+ * headers)` called before any `setHeader`, as plain `node:http` handlers and
+ * Fastify do, sends its headers without keeping them for `getHeader`, so the
+ * head Node wrote is the only record of them.
+ */
+function sentContentType(res: ServerResponse): string | null {
+  const head = (res as { _header?: unknown })._header;
+  if (typeof head !== "string") return null;
+  const match = /\r\ncontent-type:[ \t]*([^\r\n]*)/i.exec(head);
+  return match === null ? null : match[1]!;
 }
 
 function peerOf(req: NodeRequest): ProxyPeer {
