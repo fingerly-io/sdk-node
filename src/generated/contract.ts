@@ -936,9 +936,9 @@ export interface components {
              * @description How many times this exact request was served since the last report, this one included; 1 when absent, at most 1000000
              */
             count?: number;
-            /** @description The Host the request was sent to, which a signing agent signs */
+            /** @description The Host the request was sent to, which a signing agent signs. At most 4096 bytes */
             host?: string;
-            /** @description The request method; GET when absent */
+            /** @description The request method; GET when absent. At most 4096 bytes */
             method?: string;
             /** @description The Signature header, when the request had one. At most 4096 bytes */
             signature?: string;
@@ -956,14 +956,14 @@ export interface components {
             ai?: components["schemas"]["AIAgentOut"] | null;
             /**
              * Format: int64
-             * @description Seconds this answer may be reused for the exact same user agent, address and Signature-Agent; 0 for a signed request, which is checked every time
+             * @description Seconds this answer may be reused for the exact same user agent, address and Signature-Agent; 0 for a signed request, which is checked every time, and for a request the server could not use
              */
             ttl: number;
             /**
-             * @description human, ai_bot, automation or search_crawler. New values can be added within API v1, so accept values not listed here.
+             * @description human, ai_bot, automation or search_crawler; unknown for a request the server could not use (a field over its limit, an address that is not one literal, or a count over 1000000), which is neither classified nor counted. New values can be added within API v1, so accept values not listed here.
              * @enum {string}
              */
-            visitor_kind: "human" | "ai_bot" | "automation" | "search_crawler";
+            visitor_kind: "human" | "ai_bot" | "automation" | "search_crawler" | "unknown";
         };
         AgentSightingsIn: {
             /** @description The requests, at most 200. Each is answered in the same position of the answer's items */
