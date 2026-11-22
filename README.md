@@ -360,7 +360,21 @@ app.get("/pricing", (req, res) => {
 | `422`, any other status, or a `200` it cannot read | Drops the requests and logs. |
 | No answer within the deadline | Drops the requests: Fingerly may have counted them already. |
 
-Problems go to `console.error`, at most once a minute each, or to `onError` with a `ProxyFailureKind`, and never carry a reported field. `sightings.flush()` sends everything waiting now and `sightings.close()` stops the timer and sends what is left; neither rejects. On serverless and edge runtimes, where nothing runs after the invocation ends, call `flush()` before it does, for example `waitUntil(sightings.flush())`.
+Problems go to `console.error`, at most once a minute each, or to `onError` with a `ProxyFailureKind`, and never carry a reported field.
+
+**Shutting down.** The background timer never keeps the process alive, so requests still waiting when the process exits are lost unless `close()` sends them first. Node exits at once on `SIGTERM` unless you handle it, so stop the server, then close the reporter:
+
+```ts
+const server = app.listen(8080);
+
+process.once("SIGTERM", async () => {
+  server.close();
+  await sightings.close();
+  process.exit(0);
+});
+```
+
+`close()` stops the timer, sends what is waiting in reports of up to 200, each with its 5 second deadline, stops at the first report that fails or while the API asked to wait, and never rejects. Calling it again returns the same promise; after it, reports are ignored and `lookup` keeps answering. Under `node:cluster` a worker exits at once when the primary does, so forward the signal from the primary to each worker (`worker.process.kill("SIGTERM")`) and let each worker close its own reporter. `sightings.flush()` sends everything waiting now without closing. On serverless and edge runtimes, where nothing runs after the invocation ends, call `flush()` before it does, for example `waitUntil(sightings.flush())`.
 
 `fingerly.agents.sightings(items)` is the call underneath: one `POST /api/v1/agents/sightings` with up to 200 items, answered in the same order. It throws `FingerlyAPIError` like the event reads; a `429` carries `retryAfter` and `rateLimitScope`.
 

@@ -272,15 +272,18 @@ export class AgentSightings {
   /**
    * Sends everything pending now, in reports of up to 200 requests, and
    * resolves when done. Call it before a serverless invocation ends, for
-   * example in `waitUntil(sightings.flush())`. It stops early while the API
-   * asked to wait, and never rejects.
+   * example in `waitUntil(sightings.flush())`. It stops early once a report
+   * fails or while the API asked to wait, so it takes at most one 5 second
+   * deadline per report, and never rejects.
    */
   async flush(): Promise<void> {
     try {
       let rounds = this.#pending.size + this.#inFlight + 2;
       while (rounds-- > 0) {
         if (this.#flight !== null) {
-          await this.#flight;
+          // A report already in flight that failed ends the flush like one
+          // of its own: during an outage, close() waits one deadline, not two.
+          if ((await this.#flight) !== "sent") return;
           continue;
         }
         const outcome = await this.#flushOnce();

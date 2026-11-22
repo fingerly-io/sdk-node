@@ -888,6 +888,22 @@ describe("the failure table", () => {
     },
   );
 
+  it("ends a flush when the report it waited for timed out", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { sightings, sent } = harness(() => new Promise<Response>(() => {}));
+    for (let i = 0; i < 400; i++)
+      sightings.report(request(`ua-${i}`, "198.51.100.1"), html());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent).toHaveLength(1);
+    let done = false;
+    const closed = sightings.close().then(() => (done = true));
+    await vi.advanceTimersByTimeAsync(5_001);
+    // The API is not answering: the second batch is not sent into it.
+    expect(done).toBe(true);
+    expect(sent).toHaveLength(1);
+    await closed;
+  });
+
   it("drops a 200 whose items do not match the batch", async () => {
     const { sightings, sent, errors } = harness(() =>
       Response.json({ rules_version: "r1", items: [] }),
