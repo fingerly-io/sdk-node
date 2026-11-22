@@ -239,6 +239,7 @@ describe("enum constants", () => {
       "ai_bot",
       "automation",
       "search_crawler",
+      "unknown",
     ]);
     expect(Object.values(AIPurpose)).toEqual([
       "training",

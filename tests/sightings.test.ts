@@ -417,6 +417,43 @@ describe("the answer cache", () => {
     );
   });
 
+  it("keeps the other answers when the API could not use one item", async () => {
+    const { sightings, sent, errors } = harness((items) =>
+      Response.json({
+        rules_version: "r1",
+        items: items.map((item) =>
+          item.user_agent === "unusable"
+            ? { ttl: 0, visitor_kind: VisitorKind.Unknown }
+            : {
+                ttl: 60,
+                visitor_kind: VisitorKind.AiBot,
+                agent: item.user_agent,
+              },
+        ),
+      }),
+    );
+    sightings.report(request("first", "198.51.100.1"), html());
+    sightings.report(request("unusable", "198.51.100.1"), html());
+    sightings.report(request("third", "198.51.100.1"), html());
+    await sightings.flush();
+    expect(sent.map((batch) => batch.map((item) => item.user_agent))).toEqual([
+      ["first", "unusable", "third"],
+    ]);
+    expect(sightings.lookup(request("first", "198.51.100.1")).agent).toBe(
+      "first",
+    );
+    expect(sightings.lookup(request("unusable", "198.51.100.1"))).toBe(
+      AgentSightings.Unknown,
+    );
+    expect(sightings.lookup(request("third", "198.51.100.1")).agent).toBe(
+      "third",
+    );
+    await sightings.flush();
+    expect(sent).toHaveLength(1);
+    expect(errors).toEqual([]);
+    expect(sightings.dropped).toBe(0);
+  });
+
   it("never remembers an answer that is not what AgentAnswer declares", async () => {
     const agent = fixture.body.items.find(
       (item: { ai?: unknown }) => item.ai !== undefined,

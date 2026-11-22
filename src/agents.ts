@@ -19,11 +19,14 @@ export class AgentsClient {
    * Reports up to 200 requests as raw input and answers what sent each one,
    * in the same order. One POST, never retried.
    *
-   * @param items The requests; the server refuses an empty list, more than
-   *   200, a header over 4096 bytes or an address that is not one literal.
+   * @param items The requests; the server refuses an empty list or more
+   *   than 200. An item it cannot use (a field over 4096 bytes, an address
+   *   that is not one literal, a count over 1000000) is answered
+   *   `VisitorKind.Unknown` with `ttl` 0 in its place, and the others as
+   *   usual.
    * @param signal Caller cancellation.
    * @throws {FingerlyAPIError} On any non-2xx answer: `422 invalid_request`
-   *   for an unusable batch, `429 rate_limited` with `retryAfter` and
+   *   when no item in the batch was usable, `429 rate_limited` with `retryAfter` and
    *   `rateLimitScope` (`daily` for the organisation's daily allowance).
    * @throws {FingerlyTimeoutError} When the deadline elapses.
    * @throws {FingerlyConnectionError} When the API cannot be reached.

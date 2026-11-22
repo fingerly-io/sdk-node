@@ -262,12 +262,18 @@ export const DeviceKind = {
 /** One of the kinds in {@link DeviceKind}. */
 export type DeviceKind = (typeof DeviceKind)[keyof typeof DeviceKind];
 
-/** An event's `visitor_kind`: what sort of client made the request. */
+/**
+ * An event's `visitor_kind`: what sort of client made the request.
+ *
+ * - `Unknown`: only in an agent sightings answer: a request the server could
+ *   not use; ttl 0, never remembered. An event never carries it.
+ */
 export const VisitorKind = {
   Human: "human",
   AiBot: "ai_bot",
   Automation: "automation",
   SearchCrawler: "search_crawler",
+  Unknown: "unknown",
 } as const;
 /** One of the kinds in {@link VisitorKind}. */
 export type VisitorKind = (typeof VisitorKind)[keyof typeof VisitorKind];
