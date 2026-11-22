@@ -196,28 +196,27 @@ if (!ok) {
 
 ## DeviceCheck bits on iOS
 
-When DeviceCheck is turned on for your project's Apple key, an iOS identification holds an Apple DeviceCheck token for one hour. The token pays for exactly one Apple call: `fingerly.deviceCheck.query` reads the device's two bits, `fingerly.deviceCheck.write` sets them, never both. Apple treats a token as single-use, so a "check, then mark" flow such as a once-per-device free trial spends two identifications:
+When DeviceCheck is turned on for your project's Apple key, an iOS identification holds two Apple DeviceCheck tokens for one hour: a read token and a write token. `fingerly.deviceCheck.query` spends the read token to read the device's two bits, `fingerly.deviceCheck.write` spends the write token to set them, and each pays for one Apple call. Apple treats a token as single-use, so one identification supports one read and one write, and a "check, then mark" flow such as a once-per-device free trial does both with the same request ID:
 
 1. On the identification that asks for the trial, query the bits.
 2. If they say the device had one, refuse. Otherwise grant the trial and record
    the grant in your own data; until the bit is written, that record is what
    stops a second trial.
-3. On the next identification from that install, write the bit.
+3. Write the bit with the same request ID.
 
 ```ts
 // bit0 means "this device has had a free trial". The meaning is yours.
-const bits = await fingerly.deviceCheck.query(trialRequestId);
+const bits = await fingerly.deviceCheck.query(requestId);
 if (bits.found && bits.bit0) return "offer-paid-plan";
 await trials.grant({ accountId, deviceMarked: false });
 
-// Later, with the request ID of the app's next identification:
-await fingerly.deviceCheck.write(markRequestId, { bit0: true });
+await fingerly.deviceCheck.write(requestId, { bit0: true });
 await trials.update(accountId, { deviceMarked: true });
 ```
 
 Errors are `FingerlyAPIError` with a `DeviceCheckErrorCode` in `code` (compare with the `DeviceCheckErrorCode` constant, such as `DeviceCheckErrorCode.DeviceCheckNotHeld`): `device_check_not_held` (404, no token: decide without the bits), `device_check_spent`, `device_check_busy`, `credential_unavailable` (409), `bits_required`, `apple_rejected` (422, Apple's HTTP status in `appleStatus`) and `device_check_unavailable` (503). A write naming no bit is refused with a `TypeError` before anything is sent.
 
-After a `503` or a transport failure the SDK resends the identical request, twice at most. A token kept after such an answer accepts only the request it was first used for: retry with the same method and bits, or the API answers `device_check_spent`.
+After a `503` or a transport failure the SDK resends the identical request, twice at most. A token kept after such an answer accepts only the request it was first used for: retry with the same method and bits. A second read, or a write with other bits, on that event answers `device_check_spent`.
 
 ## Verify webhooks
 

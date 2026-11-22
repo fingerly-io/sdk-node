@@ -6,14 +6,13 @@ import type {
 } from "./types.js";
 
 /**
- * Spends the Apple DeviceCheck token held for an iOS event: once, to read the
- * device's two bits or to set them.
+ * Spends the Apple DeviceCheck tokens held for an iOS event, each once: the
+ * read token to read the device's two bits, the write token to set them.
  *
- * A token pays for one Apple call, a read or a write, never both, so a "check,
- * then mark" flow such as a once-per-device trial reads on one identification
- * and writes on the next. After a `503` or a transport failure the SDK resends
- * the identical request; the API accepts a retry only when it repeats the
- * first request for that token.
+ * Each token pays for one Apple call, so a "check, then mark" flow such as a
+ * once-per-device trial reads and then writes with the same request ID. After
+ * a `503` or a transport failure the SDK resends the identical request; the
+ * API accepts a retry only when it repeats the first request for that token.
  *
  * Reached as `fingerly.deviceCheck`; it is never constructed directly.
  */
@@ -21,7 +20,7 @@ export class DeviceCheckClient {
   constructor(private readonly transport: APITransport) {}
 
   /**
-   * Reads the device's bits from Apple, spending the event's token.
+   * Reads the device's bits from Apple, spending the event's read token.
    *
    * @param requestId The `request_id` of an iOS identification from the last
    *   hour.
@@ -51,8 +50,8 @@ export class DeviceCheckClient {
   }
 
   /**
-   * Sets `bit0`, `bit1` or both with Apple, spending the event's token. A bit
-   * left out keeps its value.
+   * Sets `bit0`, `bit1` or both with Apple, spending the event's write
+   * token. A bit left out keeps its value.
    *
    * @param requestId The `request_id` of an iOS identification from the last
    *   hour.

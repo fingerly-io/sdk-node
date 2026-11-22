@@ -333,9 +333,9 @@ export type AIVerificationResult =
 /**
  * The `code` of a `FingerlyAPIError` from `fingerly.deviceCheck`.
  *
- * - `device_check_not_held` (404): no token is held for the event.
- * - `device_check_spent` (409): the token was used, or a retry was not the
- *   first request.
+ * - `device_check_not_held` (404): no token is held for that call.
+ * - `device_check_spent` (409): the call's token was used, a read's by a
+ *   read or a write's by a write, or a retry was not the first request.
  * - `device_check_busy` (409): another call is using the token.
  * - `credential_unavailable` (409): the project's Apple key is missing,
  *   refused, or has DeviceCheck off; the token is kept.
