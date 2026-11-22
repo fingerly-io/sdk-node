@@ -32,7 +32,7 @@ Node.js 18.16 or newer. No runtime dependencies.
 **2. Install.**
 
 ```sh
-npm install @fingerly/node@^0.5.0
+npm install @fingerly/node@^0.5.1
 ```
 
 **3. Read an event.**
@@ -284,7 +284,7 @@ The handler never throws, so your framework never turns an outage into a 500 wit
 
 When the visitor disconnects, the upstream call is cancelled and nothing is logged. The proxy key, like the secret key, is checked on the first request, so a build without secrets can load the route module.
 
-The proxy reports itself upstream as `node/0.5.0`, which the dashboard shows per proxy.
+The proxy reports itself upstream as `node/0.5.1`, which the dashboard shows per proxy.
 
 <details>
 <summary>Proxy options</summary>

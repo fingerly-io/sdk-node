@@ -55,6 +55,7 @@ export const Signal = {
   Jailbreak: "jailbreak",
   RootedDevice: "rooted_device",
   RootApps: "root_apps",
+  BootloaderUnlocked: "bootloader_unlocked",
   PlayDeviceIntegrityFailed: "play_device_integrity_failed",
   ClonedApp: "cloned_app",
   AppCloner: "app_cloner",
