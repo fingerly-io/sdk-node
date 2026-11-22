@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { isIP } from "node:net";
 import { AgentsClient } from "./agents.js";
-import { decodeAIAgent, isObject } from "./decode.js";
+import { callHook, decodeAIAgent, isObject, isThenable } from "./decode.js";
 import { ProxyFailureKind } from "./enums.js";
 import {
   FingerlyAPIError,
@@ -719,11 +719,7 @@ export class AgentSightings {
     this.#logged.set(problem, now);
     const failure: ProxyFailure = { kind, message };
     if (this.#onError) {
-      try {
-        this.#onError(failure);
-      } catch {
-        // A logging hook must not break reporting.
-      }
+      callHook(this.#onError, failure);
       return;
     }
     console.error(`Fingerly agent sightings: ${message}`);
@@ -929,14 +925,6 @@ function peerOf(req: NodeRequest): ProxyPeer {
   const socket = (req as unknown as IncomingMessage).socket as
     { remoteAddress?: string } | undefined;
   return { remoteAddress: socket?.remoteAddress };
-}
-
-function isThenable(value: unknown): value is PromiseLike<unknown> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { then?: unknown }).then === "function"
-  );
 }
 
 /**

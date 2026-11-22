@@ -10,6 +10,7 @@ import {
 import type { KeyScope } from "./config.js";
 import { MAX_RESPONSE_BYTES, readLimited } from "./body.js";
 import { withDeadline } from "./deadline.js";
+import { callHook } from "./decode.js";
 import { FingerlyTimeoutError } from "./errors.js";
 import { REDACTED, inspectCustom } from "./redact.js";
 import { serveNode } from "./node.js";
@@ -356,11 +357,8 @@ export class FingerlyProxy {
   /** One concise line per failure: the hook if given, else the console. */
   private report(failure: ProxyFailure): void {
     if (this.onError) {
-      try {
-        this.onError(failure);
-      } catch {
-        // A logging hook must not turn a 502 into a crash.
-      }
+      // A logging hook must not turn a 502 into a crash.
+      callHook(this.onError, failure);
       return;
     }
     console.error(`Fingerly proxy: ${failure.message}`);

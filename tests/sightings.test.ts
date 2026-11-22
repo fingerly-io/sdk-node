@@ -637,6 +637,18 @@ describe("the failure table", () => {
     expect(errors).toHaveLength(2);
   });
 
+  it("handles the rejection of an async onError, which would end the process", async () => {
+    // A promise's then, observed: an unhandled rejection would end the run.
+    const then = vi.fn();
+    const { sightings } = harness(() => new Response("{}", { status: 422 }), {
+      onError: () => ({ then }) as unknown as void,
+    });
+    sightings.report(request("a", "198.51.100.1"), html());
+    await sightings.flush();
+    expect(then).toHaveBeenCalledTimes(1);
+    expect(then.mock.calls[0]![1]).toBeTypeOf("function");
+  });
+
   it("keeps a 429 batch and waits for Retry-After", async () => {
     let refuse = true;
     const { sightings, sent, clock } = harness((items) =>

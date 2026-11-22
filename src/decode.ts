@@ -5,6 +5,28 @@ export function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** True for a promise or anything else with a `then` method. */
+export function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { then?: unknown }).then === "function"
+  );
+}
+
+/**
+ * Runs the customer's error hook. Neither a throw nor, from an async hook, a
+ * rejection reaches the caller: a rejection nobody handles ends the process.
+ */
+export function callHook<T>(hook: (value: T) => void, value: T): void {
+  try {
+    const result: unknown = hook(value);
+    if (isThenable(result)) result.then(undefined, () => {});
+  } catch {
+    // A logging hook must not break what it reports on.
+  }
+}
+
 /**
  * An `ai` object as {@link AIAgent} declares it, copied field by field, or
  * null when a field is missing or of the wrong type. Values stay open: an

@@ -499,6 +499,29 @@ describe("proxy boundary", () => {
     expect(failures).toEqual(["timeout", "upstream"]);
   });
 
+  it("handles the rejection of an async onError, which would end the process", async () => {
+    // A promise's then, observed: an unhandled rejection would end the run.
+    const then = vi.fn();
+    const proxy = createProxy({
+      proxyKey,
+      clientIp: () => "127.0.0.1",
+      fetchImpl: async () => {
+        throw new TypeError("fetch failed");
+      },
+      onError: () => ({ then }) as unknown as void,
+    });
+    const response = await proxy(
+      new Request("https://shop.test/k7x2qm4a", {
+        method: "POST",
+        headers: browserKey,
+        body: "{}",
+      }),
+    );
+    expect(response.status).toBe(502);
+    expect(then).toHaveBeenCalledTimes(1);
+    expect(then.mock.calls[0]![1]).toBeTypeOf("function");
+  });
+
   it("caps upstream bodies at 4 MiB and never relays a truncated one", async () => {
     const MiB = 1_048_576;
     const proxyFor = (body: () => BodyInit) =>
